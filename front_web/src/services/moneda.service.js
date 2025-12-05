@@ -1,6 +1,7 @@
 import axios from 'axios';
+import config from '../config';
 
-const API_URL = 'http://localhost:3000/api/monedas';
+const API_URL = `${config.API_BASE_URL}/monedas`;
 
 const getAll = async () => {
     const response = await axios.get(API_URL);

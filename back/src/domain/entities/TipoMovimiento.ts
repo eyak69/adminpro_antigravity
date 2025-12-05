@@ -25,11 +25,11 @@ export class TipoMovimiento extends AuditableEntity {
     @Column({ type: "varchar", length: 100 })
     nombre!: string;
 
-    @Column({ type: "enum", enum: AccionMovimiento })
-    tipo_accion!: AccionMovimiento;
+    @Column({ type: "enum", enum: AccionMovimiento, nullable: true })
+    tipo_accion!: AccionMovimiento | null;
 
-    @Column({ type: "enum", enum: Contabilizacion })
-    contabilizacion!: Contabilizacion;
+    @Column({ type: "enum", enum: Contabilizacion, nullable: true })
+    contabilizacion!: Contabilizacion | null;
 
     // Flags booleanos
     @Column({ type: "boolean", default: false })

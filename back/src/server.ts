@@ -11,10 +11,15 @@ dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 
+import ParametroService from "./application/services/parametro.service";
+
 const startServer = async () => {
     try {
         await AppDataSource.initialize();
         console.log("Data Source has been initialized!");
+
+        // Initialize Parameters
+        await ParametroService.seedDefaults();
 
         // --- Composition Root ---
         // 1. Instantiate Services

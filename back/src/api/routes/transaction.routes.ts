@@ -5,6 +5,7 @@ export const createTransactionRouter = (controller: TransactionController): Rout
     const router = Router();
 
     router.post("/", (req, res) => controller.ejecutarTransaccion(req, res));
+    router.post("/anular/:id", (req, res) => controller.anularTransaccion(req, res));
 
     return router;
 };

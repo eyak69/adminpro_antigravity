@@ -9,8 +9,11 @@ import { TipoMovimiento } from "../../domain/entities/TipoMovimiento";
 import { PlanillaDiaria } from "../../domain/entities/PlanillaDiaria";
 import { CtaCteSaldo } from "../../domain/entities/CtaCteSaldo";
 import { CtaCteMovimiento } from "../../domain/entities/CtaCteMovimiento";
+import { SystemLog } from "../../domain/entities/SystemLog";
 
 dotenv.config();
+
+import { Parametro } from "../../domain/entities/Parametro";
 
 export const AppDataSource = new DataSource({
     type: "mysql",
@@ -21,7 +24,7 @@ export const AppDataSource = new DataSource({
     database: process.env.DB_DATABASE,
     synchronize: true, // Don't use this in production
     logging: false,
-    entities: [Moneda, StockCaja, Cliente, Operacion, TipoMovimiento, PlanillaDiaria, CtaCteSaldo, CtaCteMovimiento],
+    entities: [Moneda, StockCaja, Cliente, Operacion, TipoMovimiento, PlanillaDiaria, CtaCteSaldo, CtaCteMovimiento, SystemLog, Parametro],
     migrations: [],
     subscribers: [],
 });

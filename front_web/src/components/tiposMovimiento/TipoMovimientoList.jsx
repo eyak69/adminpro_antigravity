@@ -12,9 +12,12 @@ import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import Swal from 'sweetalert2';
 import TipoMovimientoService from '../../services/tipoMovimiento.service';
 import TipoMovimientoForm from './TipoMovimientoForm';
 import { useConfirm } from '../../context/ConfirmContext';
+import { useNotification } from '../../context/NotificationContext';
+import { useParametros } from '../../context/ParametrosContext';
 
 const TipoMovimientoList = () => {
     const [tipos, setTipos] = useState([]);
@@ -22,6 +25,7 @@ const TipoMovimientoList = () => {
     const [openForm, setOpenForm] = useState(false);
     const [selectedTipo, setSelectedTipo] = useState(null);
     const confirm = useConfirm();
+    const { addNotification } = useNotification();
 
     const fetchTipos = async () => {
         setLoading(true);
@@ -76,25 +80,99 @@ const TipoMovimientoList = () => {
             fetchTipos();
         } catch (error) {
             console.error('Error saving tipo movimiento:', error);
+            const message = error.response?.data?.message || 'Ocurrió un error al guardar el tipo de movimiento.';
+
+            // Log to system via context (persists to backend)
+            addNotification('error', message);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error al guardar',
+                text: message
+            });
         }
     };
 
+    const { parametros, getCellColor, getRowTheme } = useParametros();
+
     const columns = [
-        { field: 'id', headerName: 'ID', width: 70 },
-        { field: 'nombre', headerName: 'Nombre' },
-        { field: 'tipo_accion', headerName: 'Acción' },
+        {
+            field: 'id',
+            headerName: 'ID',
+            width: 70,
+            type: 'number',
+            headerAlign: 'left',
+            align: 'left'
+        },
+        {
+            field: 'nombre',
+            headerName: 'Nombre',
+            flex: 2,
+            minWidth: 200
+        },
+        {
+            field: 'tipo_accion',
+            headerName: 'Acción',
+            width: 120,
+            type: 'singleSelect',
+            valueOptions: ['COMPRA', 'VENTA', 'ENTRADA', 'SALIDA'],
+            renderCell: (params) => {
+                if (!params.value) return '';
+                const color = getCellColor(params.value);
+                return (
+                    <Typography
+                        variant="body2"
+                        fontWeight="bold"
+                        sx={{ color: color }}
+                    >
+                        {params.value}
+                    </Typography>
+                );
+            }
+        },
+        {
+            field: 'contabilizacion',
+            headerName: 'Contab.',
+            width: 100,
+            type: 'singleSelect',
+            valueOptions: ['DEBE', 'HABER'],
+            renderCell: (params) => {
+                if (!params.value) return '';
+                const color = getCellColor(params.value);
+                return (
+                    <Typography
+                        variant="body2"
+                        fontWeight="bold"
+                        sx={{ color: color }}
+                    >
+                        {params.value}
+                    </Typography>
+                );
+            }
+        },
         {
             field: 'operacion',
             headerName: 'Operación',
+            flex: 1.5,
+            minWidth: 150,
             valueGetter: (value, row) => row.operacion?.nombre || ''
         },
         {
             field: 'monedas_permitidas',
             headerName: 'Monedas',
+            flex: 1,
+            sortable: false,
+            filterable: false,
             renderCell: (params) => (
                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', height: '100%', alignItems: 'center' }}>
                     {params.value?.map((m) => (
-                        <Chip key={m.id} label={m.codigo} size="small" variant="outlined" />
+                        <Chip
+                            key={m.id}
+                            label={m.codigo}
+                            size="small"
+                            variant="outlined"
+                            sx={{ borderColor: 'divider', bgcolor: 'background.paper' }}
+                        />
                     ))}
                 </Box>
             )
@@ -104,6 +182,8 @@ const TipoMovimientoList = () => {
             headerName: '',
             width: 120,
             sortable: false,
+            filterable: false,
+            hideable: false,
             renderCell: (params) => (
                 <Box>
                     <Tooltip title="Editar">
@@ -149,6 +229,41 @@ const TipoMovimientoList = () => {
                     }}
                     disableRowSelectionOnClick
                     autosizeOnMount
+                    getRowClassName={(params) => {
+                        // Use helper to detect applied theme (returning the Key or Object)
+                        // Note: Current Context getRowTheme returns object. 
+                        // We need a key to map to class.
+                        // Improvised Solution:
+                        const theme = parametros.themeConfig || {};
+                        const { tipo_accion, contabilizacion } = params.row;
+
+                        // 1. Detect Cruzado
+                        if ((tipo_accion === 'COMPRA' && contabilizacion === 'DEBE') ||
+                            (tipo_accion === 'VENTA' && contabilizacion === 'HABER')) {
+                            return 'row-CRUZADO';
+                        }
+
+                        // 2. Detect Mismatch? (Previous user logic vs New JSON logic)
+                        // User JSON "CRUZADO" description says "Intercambio".
+                        // I will stick to mapping valid keys if they exist in theme.
+                        if (tipo_accion && theme[tipo_accion]) return `row-${tipo_accion}`;
+                        if (contabilizacion && theme[contabilizacion]) return `row-${contabilizacion}`;
+
+                        return '';
+                    }}
+                    sx={{
+                        // Dynamic Styles Generation
+                        ...((parametros.themeConfig) ? Object.keys(parametros.themeConfig).reduce((acc, key) => {
+                            const conf = parametros.themeConfig[key];
+                            if (conf.rowColor) {
+                                acc[`& .row-${key}`] = {
+                                    bgcolor: conf.rowColor,
+                                    '&:hover': { bgcolor: conf.rowColor } // Simplification
+                                };
+                            }
+                            return acc;
+                        }, {}) : {})
+                    }}
                 />
             )}
             {loading && (

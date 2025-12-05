@@ -30,8 +30,8 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
     const { control, handleSubmit, reset } = useForm({
         defaultValues: {
             nombre: '',
-            tipo_accion: 'COMPRA',
-            contabilizacion: 'DEBE',
+            tipo_accion: '', // Default to empty
+            contabilizacion: '', // Default to empty
             requiere_persona: false,
             es_persona_obligatoria: false,
             requiere_cotizacion: false,
@@ -68,8 +68,8 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
         } else {
             reset({
                 nombre: '',
-                tipo_accion: 'COMPRA',
-                contabilizacion: 'DEBE',
+                tipo_accion: '', // Default to empty instead of COMPRA
+                contabilizacion: '', // Default to empty instead of DEBE
                 requiere_persona: false,
                 es_persona_obligatoria: false,
                 requiere_cotizacion: false,
@@ -85,7 +85,9 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
         const payload = {
             ...data,
             operacionId: data.operacion_id,
-            monedaIds: data.monedas_permitidas
+            monedaIds: data.monedas_permitidas,
+            tipo_accion: data.tipo_accion === '' ? null : data.tipo_accion,
+            contabilizacion: data.contabilizacion === '' ? null : data.contabilizacion
         };
         delete payload.operacion_id;
         delete payload.monedas_permitidas;
@@ -98,7 +100,7 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
             <DialogTitle>{initialData ? 'Editar Tipo de Movimiento' : 'Nuevo Tipo de Movimiento'}</DialogTitle>
             <form onSubmit={handleSubmit(handleFormSubmit)}>
                 <DialogContent>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                    <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
                         {/* Basic Info */}
                         <Box sx={{ gridColumn: 'span 2' }}>
                             <Controller
@@ -127,6 +129,10 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
                                     label="Acción"
                                     fullWidth
                                 >
+                                    {/* Add "Ninguno" option */}
+                                    <MenuItem value="">
+                                        <em>Ninguno</em>
+                                    </MenuItem>
                                     {ACCION_MOVIMIENTO.map((option) => (
                                         <MenuItem key={option} value={option}>
                                             {option}
@@ -146,6 +152,10 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
                                     label="Contabilización"
                                     fullWidth
                                 >
+                                    {/* Add "Ninguno" option */}
+                                    <MenuItem value="">
+                                        <em>Ninguno</em>
+                                    </MenuItem>
                                     {CONTABILIZACION.map((option) => (
                                         <MenuItem key={option} value={option}>
                                             {option}

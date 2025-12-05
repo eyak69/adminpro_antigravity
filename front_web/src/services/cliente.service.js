@@ -1,6 +1,7 @@
 import axios from 'axios';
+import config from '../config';
 
-const API_URL = 'http://localhost:3000/api/clientes';
+const API_URL = `${config.API_BASE_URL}/clientes`;
 
 const getAll = async () => {
     const response = await axios.get(API_URL);
