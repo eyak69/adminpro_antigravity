@@ -6,7 +6,7 @@ const planillaService = new PlanillaService();
 export class PlanillaController {
     async getAll(req: Request, res: Response) {
         try {
-            const planillas = await planillaService.getAll();
+            const planillas = await planillaService.getAll(req.query);
             res.json(planillas);
         } catch (error) {
             res.status(500).json({ message: "Error al obtener planilla", error });

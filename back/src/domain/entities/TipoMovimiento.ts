@@ -12,9 +12,8 @@ export enum AccionMovimiento {
 }
 
 export enum Contabilizacion {
-    DEBE = "DEBE",
-    HABER = "HABER",
-    NEUTRO = "NEUTRO",
+    ENTRADA = "ENTRADA",
+    SALIDA = "SALIDA",
 }
 
 @Entity("tipos_movimiento")

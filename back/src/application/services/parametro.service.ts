@@ -71,6 +71,13 @@ class ParametroService {
             await this.set('COLORESOPERACIONES', initialConfig, 'Configuración de colores para la grilla de operaciones');
             console.log('Semillado COLORESOPERACIONES');
         }
+
+        // Seed CONTROLSALDO
+        const existsSaldo = await this.repository.findOne({ where: { clave: 'CONTROLSALDO' } });
+        if (!existsSaldo) {
+            await this.set('CONTROLSALDO', false, 'Habilita o deshabilita la validación estricta de saldo suficiente');
+            console.log('Semillado CONTROLSALDO');
+        }
     }
 }
 

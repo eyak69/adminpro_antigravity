@@ -4,8 +4,8 @@ import config from '../config';
 const API_URL = `${config.API_BASE_URL}/planillas`;
 const TRANSACTION_URL = `${config.API_BASE_URL}/transactions`;
 
-const getAll = async () => {
-    const response = await axios.get(API_URL);
+const getAll = async (params) => {
+    const response = await axios.get(API_URL, { params });
     return response.data;
 };
 

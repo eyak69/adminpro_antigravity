@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import {
     Container, Typography, TextField, Button, Grid, MenuItem,
@@ -18,6 +18,7 @@ import operacionService from '../../services/operacion.service';
 
 const PlanillaForm = () => {
     const navigate = useNavigate();
+    const location = useLocation(); // Import useLocation
     const { id } = useParams();
     const isEditMode = !!id;
     const [isLoading, setIsLoading] = useState(true);
@@ -33,9 +34,19 @@ const PlanillaForm = () => {
     const [filteredMonedas, setFilteredMonedas] = useState([]);
     const [selectedTipoMov, setSelectedTipoMov] = useState(null);
 
+    const getTodayString = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const initialDate = location.state?.initialDate || getTodayString();
+
     const { control, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm({
         defaultValues: {
-            fecha_operacion: new Date().toISOString().slice(0, 16), // Smart Default: Today
+            fecha_operacion: initialDate,
             operacionId: '',
             tipoMovimientoId: '',
             clienteId: '',
@@ -254,7 +265,7 @@ const PlanillaForm = () => {
                                     <TextField
                                         {...field}
                                         label="Fecha Operación"
-                                        type="datetime-local"
+                                        type="date"
                                         fullWidth
                                         InputLabelProps={{ shrink: true }}
                                         error={!!errors.fecha_operacion}
@@ -393,20 +404,22 @@ const PlanillaForm = () => {
                             </Grid>
                         )}
 
-                        {/* UX: CALCULADORA EN TIEMPO REAL */}
-                        <Grid xs={12}>
-                            <Card variant="outlined" sx={{ bgcolor: 'action.hover', width: '100%' }}>
-                                <CardContent sx={{ p: '10px !important', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">Total Conversión</Typography>
-                                        <Typography variant="h6" color="primary.main" fontWeight="bold">
-                                            $ {totalConversion}
-                                        </Typography>
-                                    </Box>
-                                    <CalculateIcon color="disabled" />
-                                </CardContent>
-                            </Card>
-                        </Grid>
+                        {/* UX: CALCULADORA EN TIEMPO REAL (Solo si requiere cotización) */}
+                        {selectedTipoMov?.requiere_cotizacion && (
+                            <Grid xs={12}>
+                                <Card variant="outlined" sx={{ bgcolor: 'action.hover', width: '100%' }}>
+                                    <CardContent sx={{ p: '10px !important', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary">Total Conversión</Typography>
+                                            <Typography variant="h6" color="primary.main" fontWeight="bold">
+                                                $ {totalConversion}
+                                            </Typography>
+                                        </Box>
+                                        <CalculateIcon color="disabled" />
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        )}
 
                         {/* CLIENTE (CONDICIONAL - Show/Hide based on requiere_persona) */}
                         {(selectedTipoMov?.requiere_persona || isEditMode) && (

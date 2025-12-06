@@ -21,7 +21,7 @@ import OperacionService from '../../services/operacion.service';
 import MonedaService from '../../services/moneda.service';
 
 const ACCION_MOVIMIENTO = ['COMPRA', 'VENTA'];
-const CONTABILIZACION = ['DEBE', 'HABER'];
+const CONTABILIZACION = ['ENTRADA', 'SALIDA'];
 
 const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
     const [operaciones, setOperaciones] = useState([]);
@@ -59,27 +59,29 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
     }, []);
 
     useEffect(() => {
-        if (initialData) {
-            reset({
-                ...initialData,
-                operacion_id: initialData.operacion ? initialData.operacion.id : '',
-                monedas_permitidas: initialData.monedas_permitidas ? initialData.monedas_permitidas.map(m => m.id) : []
-            });
-        } else {
-            reset({
-                nombre: '',
-                tipo_accion: '', // Default to empty instead of COMPRA
-                contabilizacion: '', // Default to empty instead of DEBE
-                requiere_persona: false,
-                es_persona_obligatoria: false,
-                requiere_cotizacion: false,
-                lleva_observacion: false,
-                graba_cta_cte: false,
-                operacion_id: '',
-                monedas_permitidas: []
-            });
+        if (open) {
+            if (initialData) {
+                reset({
+                    ...initialData,
+                    operacion_id: initialData.operacion ? initialData.operacion.id : '',
+                    monedas_permitidas: initialData.monedas_permitidas ? initialData.monedas_permitidas.map(m => m.id) : []
+                });
+            } else {
+                reset({
+                    nombre: '',
+                    tipo_accion: '', // Default to empty instead of COMPRA
+                    contabilizacion: '', // Default to empty instead of DEBE
+                    requiere_persona: false,
+                    es_persona_obligatoria: false,
+                    requiere_cotizacion: false,
+                    lleva_observacion: false,
+                    graba_cta_cte: false,
+                    operacion_id: '',
+                    monedas_permitidas: []
+                });
+            }
         }
-    }, [initialData, reset]);
+    }, [initialData, reset, open]);
 
     const handleFormSubmit = (data) => {
         const payload = {

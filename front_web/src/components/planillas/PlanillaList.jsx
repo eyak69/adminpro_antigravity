@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
-import { Button, Container, Typography, Box, Chip } from '@mui/material';
+import { Button, Container, Typography, Box } from '@mui/material';
 import Add from '@mui/icons-material/Add';
 import Edit from '@mui/icons-material/Edit';
 import Block from '@mui/icons-material/Block'; // Block icon for 'Anular'
@@ -11,16 +11,27 @@ import { useTheme } from '@mui/material/styles';
 
 const PlanillaList = () => {
     const [planillas, setPlanillas] = useState([]);
+    // Initialize with today's date formatted manually to avoid timezone issues
+    const getTodayString = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const [selectedDate, setSelectedDate] = useState(getTodayString());
     const navigate = useNavigate();
     const theme = useTheme();
 
     useEffect(() => {
         loadPlanillas();
-    }, []);
+    }, [selectedDate]);
 
     const loadPlanillas = async () => {
         try {
-            const data = await planillaService.getAll();
+            // selectedDate is already YYYY-MM-DD
+            const data = await planillaService.getAll({ fecha: selectedDate });
             // Sort by ID descending to see newest first
             const sortedData = data.sort((a, b) => b.id - a.id);
             setPlanillas(sortedData);
@@ -28,6 +39,10 @@ const PlanillaList = () => {
             console.error('Error al cargar planillas:', error);
             Swal.fire('Error', 'No se pudieron cargar las planillas', 'error');
         }
+    };
+
+    const handleDateChange = (event) => {
+        setSelectedDate(event.target.value);
     };
 
     const handleAnular = (id) => {
@@ -48,7 +63,6 @@ const PlanillaList = () => {
                     loadPlanillas();
                 } catch (error) {
                     console.error('Error al anular:', error);
-                    // Show specific error from backend if available
                     const errorMessage = error.response?.data?.error || 'No se pudo anular la planilla.';
                     Swal.fire('Error', errorMessage, 'error');
                 }
@@ -57,38 +71,38 @@ const PlanillaList = () => {
     };
 
     const columns = [
-        { field: 'id', headerName: 'ID', width: 70 },
         {
             field: 'fecha_operacion',
             headerName: 'Fecha',
             width: 150,
+            valueGetter: (value, row) => {
+                const actualRow = row || (value && value.row) || {};
+                const val = actualRow.fecha_operacion || actualRow.created_at || value;
+                return val;
+            },
             valueFormatter: (params) => {
-                if (!params.value) return '';
-                return new Date(params.value).toLocaleString();
-            }
-        },
-        {
-            field: 'estado',
-            headerName: 'Estado',
-            width: 120,
-            renderCell: (params) => {
-                // Determine state based on deleted_at or similar flag if available from backend.
-                // Assuming standard soft-delete behavior where deleted_at is set.
-                // If the backend doesn't return deleted_at for "active" queries, we might need to adjust.
-                // But usually 'softRemove' sets deleted_at. If 'getAll' filters them out, we won't see them.
-                // Wait, if we use soft delete, TypeORM usually filters them out by default!
-                // We might need to ask the backend to include deleted/annulled records, OR custom logic.
-                // For now, looking at the Controller, it just calls `planillaService.getAll()`.
-                // If TypeORM repository uses standard find, it skips soft-deleted.
-                // Let's assume for this "Anular" logic, we want to SEE them?
-                // If they disappear, that's also "safe" but less audible.
-                // Let's implement assuming they might disappear for now, or check if 'deleted_at' is present in the object.
-                const isAnulada = params.row.deleted_at != null;
-                return isAnulada ? (
-                    <Chip label="ANULADA" color="error" size="small" variant="outlined" />
-                ) : (
-                    <Chip label="ACTIVA" color="success" size="small" variant="outlined" />
-                );
+                const dateVal = params.value || params;
+                if (!dateVal) return '';
+
+                // If it's a string, try to slice it (Handle "2023-12-05" or "2023-12-05T...")
+                if (typeof dateVal === 'string') {
+                    // Take the first 10 chars (YYYY-MM-DD) which are valid for both YYYY-MM-DD and ISO
+                    const ymd = dateVal.slice(0, 10);
+                    const [year, month, day] = ymd.split('-');
+                    return `${day}/${month}/${year}`;
+                }
+
+                // If it's a Date object (fallback)
+                if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+                    return dateVal.toLocaleDateString('es-AR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        timeZone: 'UTC' // Force UTC interpretation if we receive a Date object at midnight UTC
+                    });
+                }
+
+                return '';
             }
         },
         {
@@ -96,12 +110,13 @@ const PlanillaList = () => {
             headerName: 'Tipo Movimiento',
             width: 180,
             valueGetter: (value, row) => {
-                // Handle cases where row might be undefined (safety check)
-                if (!row) return '';
-                // If the field 'tipo_movimiento' itself is the object
+                const actualRow = row || (value && value.row);
+                if (!actualRow) return '';
+                if (actualRow.tipo_movimiento && actualRow.tipo_movimiento.nombre) {
+                    return actualRow.tipo_movimiento.nombre;
+                }
                 if (value && value.nombre) return value.nombre;
-                // Fallback to row lookup if value is just an ID or null
-                return row.tipo_movimiento?.nombre || '';
+                return '';
             }
         },
         {
@@ -109,8 +124,9 @@ const PlanillaList = () => {
             headerName: 'Cliente',
             width: 180,
             valueGetter: (value, row) => {
-                if (!row) return '-';
-                const clientObj = value || row.cliente;
+                const actualRow = row || (value && value.row);
+                if (!actualRow) return '-';
+                const clientObj = actualRow.cliente || value;
                 return clientObj?.nombre || clientObj?.razon_social || '-';
             }
         },
@@ -142,8 +158,23 @@ const PlanillaList = () => {
                 </Box>
             )
         },
-        { field: 'cotizacion_aplicada', headerName: 'Cotización', width: 100, type: 'number' },
-        { field: 'observaciones', headerName: 'Observaciones', width: 250 },
+
+        {
+            field: 'observaciones',
+            headerName: 'Observaciones',
+            width: 250,
+            valueGetter: (value, row) => {
+                const actualRow = row || (value && value.row);
+                if (!actualRow) return '';
+
+                if (actualRow.observaciones) return actualRow.observaciones;
+
+                if (actualRow.cotizacion_aplicada) {
+                    return `Cotización = ${actualRow.cotizacion_aplicada}`;
+                }
+                return '';
+            }
+        },
         {
             field: 'actions',
             headerName: 'Acciones',
@@ -182,14 +213,27 @@ const PlanillaList = () => {
                 <Typography variant="h4" component="h1">
                     Planilla Diaria
                 </Typography>
-                <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={<Add />}
-                    onClick={() => navigate('/planillas/nuevo')}
-                >
-                    Nueva Operación
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                    <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={handleDateChange}
+                        style={{
+                            padding: '8px',
+                            borderRadius: '4px',
+                            border: '1px solid #ccc',
+                            fontSize: '1rem'
+                        }}
+                    />
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        startIcon={<Add />}
+                        onClick={() => navigate('/planillas/nuevo', { state: { initialDate: selectedDate } })}
+                    >
+                        Nueva Operación
+                    </Button>
+                </Box>
             </Box>
             <Box sx={{ height: 600, width: '100%' }}>
                 <DataGrid

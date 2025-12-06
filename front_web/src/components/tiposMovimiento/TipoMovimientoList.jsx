@@ -230,22 +230,16 @@ const TipoMovimientoList = () => {
                     disableRowSelectionOnClick
                     autosizeOnMount
                     getRowClassName={(params) => {
-                        // Use helper to detect applied theme (returning the Key or Object)
-                        // Note: Current Context getRowTheme returns object. 
-                        // We need a key to map to class.
-                        // Improvised Solution:
                         const theme = parametros.themeConfig || {};
                         const { tipo_accion, contabilizacion } = params.row;
 
-                        // 1. Detect Cruzado
-                        if ((tipo_accion === 'COMPRA' && contabilizacion === 'DEBE') ||
-                            (tipo_accion === 'VENTA' && contabilizacion === 'HABER')) {
+                        // 1. Detect Cruzado: Intercambio (Compra+Salida or Venta+Entrada)
+                        if ((tipo_accion === 'COMPRA' && contabilizacion === 'SALIDA') ||
+                            (tipo_accion === 'VENTA' && contabilizacion === 'ENTRADA')) {
                             return 'row-CRUZADO';
                         }
 
-                        // 2. Detect Mismatch? (Previous user logic vs New JSON logic)
-                        // User JSON "CRUZADO" description says "Intercambio".
-                        // I will stick to mapping valid keys if they exist in theme.
+                        // 2. Normal Mapping
                         if (tipo_accion && theme[tipo_accion]) return `row-${tipo_accion}`;
                         if (contabilizacion && theme[contabilizacion]) return `row-${contabilizacion}`;
 

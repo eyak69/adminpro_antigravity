@@ -7,6 +7,7 @@ import { TipoMovimiento, AccionMovimiento, Contabilizacion } from "../../domain/
 import { Moneda } from "../../domain/entities/Moneda";
 import { Cliente } from "../../domain/entities/Cliente";
 import { TipoMovimientoCtaCte } from "../../domain/enums/TipoMovimientoCtaCte";
+import parametroService from "./parametro.service";
 
 export interface TransactionDTO {
     tipoMovimientoId: number;
@@ -70,56 +71,116 @@ export class TransactionService {
             let monedaEgreso: Moneda | null = null;
             let stockUpdatePromises: Promise<any>[] = [];
 
-            // Lógica según Acción
-            if (tipoMov.tipo_accion === AccionMovimiento.VENTA) {
-                // VENTA: Sale Moneda Extranjera (Egreso), Entra Nacional (Ingreso)
-                // Validar Stock de lo que sale
+            // Lógica según Acción - Check CONTROLSALDO
+            const controlSaldo = await parametroService.get('CONTROLSALDO');
+            const shouldValidate = controlSaldo !== false;
+
+            // Determinar si es Circuito Completo (Cambio) o Unilateral
+            const esCambio = tipoMov.requiere_cotizacion;
+
+            // Normalizar Acción: Si no tiene tipo_accion, usamos contabilizacion
+            let accion = tipoMov.tipo_accion;
+            if (!accion) {
+                if (tipoMov.contabilizacion === Contabilizacion.ENTRADA) {
+                    accion = AccionMovimiento.ENTRADA; // ENTRADA = Entra dinero (Activo aumenta)
+                } else if (tipoMov.contabilizacion === Contabilizacion.SALIDA) {
+                    accion = AccionMovimiento.SALIDA;  // SALIDA = Sale dinero (Activo disminuye)
+                }
+            }
+
+            if (accion === AccionMovimiento.VENTA) {
+                // VENTA: Sale Moneda Extranjera (Egreso) de la caja
                 const stockSalida = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
-                if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
-                    throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la venta.`);
+
+                if (shouldValidate) {
+                    if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
+                        throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la venta.`);
+                    }
                 }
 
                 monedaEgreso = moneda;
                 montoEgreso = dto.monto;
 
-                monedaIngreso = monedaNacional;
-                montoIngreso = dto.monto * (dto.cotizacion || 1);
+                // Actualizar Stock de SALIDA (Decrementar)
+                if (stockSalida) {
+                    stockUpdatePromises.push(
+                        stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", dto.monto)
+                    );
+                } else {
+                    const newStock = stockRepo.create({ moneda: moneda, saldo_actual: -dto.monto });
+                    stockUpdatePromises.push(stockRepo.save(newStock));
+                }
 
-                // Actualizar Stock (Incremental/Decremental)
-                stockUpdatePromises.push(
-                    stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", dto.monto)
-                );
+                // INGRESO
+                if (esCambio) {
+                    // Es Cambio: Calculamos Ingreso en Moneda Nacional
+                    monedaIngreso = monedaNacional;
+                    montoIngreso = dto.monto * (dto.cotizacion || 1);
 
-                // Sumar a la caja de pesos (si existe, sino crearla)
-                let stockEntrada = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
+                    let stockEntrada = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
+                    if (!stockEntrada) {
+                        stockEntrada = stockRepo.create({ moneda: monedaNacional, saldo_actual: 0 });
+                        await stockRepo.save(stockEntrada);
+                    }
+                    stockUpdatePromises.push(
+                        stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
+                    );
+                } else {
+                    // Unilateral: No hay ingreso registrado
+                    monedaIngreso = null;
+                    montoIngreso = 0;
+                }
+
+            } else if (accion === AccionMovimiento.COMPRA) {
+                // COMPRA: Entra Moneda Extranjera (Ingreso)
+                monedaIngreso = moneda;
+                montoIngreso = dto.monto;
+
+                // Actualizar Stock de ENTRADA (Incrementar)
+                let stockEntrada = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
                 if (!stockEntrada) {
-                    stockEntrada = stockRepo.create({ moneda: monedaNacional, saldo_actual: 0 });
+                    stockEntrada = stockRepo.create({ moneda: moneda, saldo_actual: 0 });
                     await stockRepo.save(stockEntrada);
                 }
                 stockUpdatePromises.push(
                     stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
                 );
 
-            } else if (tipoMov.tipo_accion === AccionMovimiento.COMPRA) {
-                // COMPRA: Entra Moneda Extranjera (Ingreso), Sale Nacional (Egreso)
-                // Validar Stock de lo que sale (Pesos)
-                const montoPesos = dto.monto * (dto.cotizacion || 1);
-                const stockSalida = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
+                // EGRESO
+                if (esCambio) {
+                    // Es Cambio: Sale Moneda Nacional
+                    const montoPesos = dto.monto * (dto.cotizacion || 1);
+                    const stockSalida = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
 
-                if (!stockSalida || Number(stockSalida.saldo_actual) < montoPesos) {
-                    throw new Error(`Saldo insuficiente en ${monedaNacional.codigo} para realizar la compra.`);
+                    if (shouldValidate) {
+                        if (!stockSalida || Number(stockSalida.saldo_actual) < montoPesos) {
+                            throw new Error(`Saldo insuficiente en ${monedaNacional.codigo} para realizar la compra.`);
+                        }
+                    }
+
+                    monedaEgreso = monedaNacional;
+                    montoEgreso = montoPesos;
+
+                    if (stockSalida) {
+                        stockUpdatePromises.push(
+                            stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
+                        );
+                    } else {
+                        const newStock = stockRepo.create({ moneda: monedaNacional, saldo_actual: -montoEgreso });
+                        stockUpdatePromises.push(stockRepo.save(newStock));
+                    }
+                } else {
+                    // Unilateral: No hay egreso registrado
+                    monedaEgreso = null;
+                    montoEgreso = 0;
                 }
 
+            } else if (accion === AccionMovimiento.ENTRADA) {
+                // Entrada simple
                 monedaIngreso = moneda;
                 montoIngreso = dto.monto;
-
-                monedaEgreso = monedaNacional;
-                montoEgreso = montoPesos;
-
-                // Actualizar Stock
-                stockUpdatePromises.push(
-                    stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
-                );
+                monedaEgreso = null;
+                montoEgreso = 0;
 
                 let stockEntrada = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
                 if (!stockEntrada) {
@@ -130,33 +191,29 @@ export class TransactionService {
                     stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
                 );
 
-            } else if (tipoMov.tipo_accion === AccionMovimiento.ENTRADA) {
-                // Entrada simple de caja (ej. Aporte de capital)
-                monedaIngreso = moneda;
-                montoIngreso = dto.monto;
-
-                let stockEntrada = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
-                if (!stockEntrada) {
-                    stockEntrada = stockRepo.create({ moneda: moneda, saldo_actual: 0 });
-                    await stockRepo.save(stockEntrada);
-                }
-                stockUpdatePromises.push(
-                    stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
-                );
-
-            } else if (tipoMov.tipo_accion === AccionMovimiento.SALIDA) {
-                // Salida simple de caja (ej. Gastos)
+            } else if (accion === AccionMovimiento.SALIDA) {
+                // Salida simple
                 const stockSalida = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
-                if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
-                    throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la salida.`);
+
+                if (shouldValidate) {
+                    if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
+                        throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la salida.`);
+                    }
                 }
 
                 monedaEgreso = moneda;
                 montoEgreso = dto.monto;
+                monedaIngreso = null;
+                montoIngreso = 0;
 
-                stockUpdatePromises.push(
-                    stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
-                );
+                if (stockSalida) {
+                    stockUpdatePromises.push(
+                        stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
+                    );
+                } else {
+                    const newStock = stockRepo.create({ moneda: moneda, saldo_actual: -montoEgreso });
+                    stockUpdatePromises.push(stockRepo.save(newStock));
+                }
             }
 
             await Promise.all(stockUpdatePromises);
@@ -184,15 +241,15 @@ export class TransactionService {
 
                 let tipoCtaCte: TipoMovimientoCtaCte;
 
-                if (tipoMov.contabilizacion === Contabilizacion.DEBE) {
+                if (tipoMov.contabilizacion === Contabilizacion.ENTRADA) {
                     tipoCtaCte = TipoMovimientoCtaCte.CREDITO;
-                } else if (tipoMov.contabilizacion === Contabilizacion.HABER) {
+                } else if (tipoMov.contabilizacion === Contabilizacion.SALIDA) {
                     tipoCtaCte = TipoMovimientoCtaCte.DEBITO;
                 } else {
                     // Si es NEUTRO o no definido, y graba_cta_cte es true, necesitamos una regla por defecto o error.
                     // Asumiremos que si es VENTA (Sale dinero) es DEBITO, si es COMPRA (Entra dinero) es CREDITO?
                     // Mejor basarse estrictamente en la contabilización de la caja.
-                    throw new Error("Configuración inconsistente: graba_cta_cte es true pero la contabilización no es DEBE ni HABER.");
+                    throw new Error("Configuración inconsistente: graba_cta_cte es true pero la contabilización no es ENTRADA ni SALIDA.");
                 }
 
                 const ctaCteMov = ctaCteMovRepo.create({
@@ -259,7 +316,7 @@ export class TransactionService {
             if (planilla.moneda_egreso && planilla.monto_egreso > 0) {
                 let stockEgreso = await stockRepo.findOneBy({ moneda: { id: planilla.moneda_egreso.id } });
                 if (!stockEgreso) {
-                    // Si por alguna razón no existe (raro), lo creamos para poder devolver el saldo
+                    // Si por alguna razón no existe, lo creamos para poder devolver el saldo
                     stockEgreso = stockRepo.create({ moneda: planilla.moneda_egreso, saldo_actual: 0 });
                     await stockRepo.save(stockEgreso);
                 }

@@ -9,7 +9,7 @@ export class PlanillaDiaria extends AuditableEntity {
     @PrimaryGeneratedColumn()
     id!: number;
 
-    @Column({ type: "datetime" })
+    @Column({ type: "date" })
     fecha_operacion!: Date;
 
     // Relaciones Clave
@@ -35,8 +35,8 @@ export class PlanillaDiaria extends AuditableEntity {
     monto_egreso!: number;
 
     // Datos Financieros
-    @Column({ type: "decimal", precision: 18, scale: 6 })
-    cotizacion_aplicada!: number;
+    @Column({ type: "decimal", precision: 18, scale: 6, nullable: true })
+    cotizacion_aplicada!: number | null;
 
     @Column({ type: "text", nullable: true })
     observaciones!: string | null;

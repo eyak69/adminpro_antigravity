@@ -18,8 +18,10 @@ export const ParametrosProvider = ({ children }) => {
         try {
             // Fetch known parameters
             const response = await axios.get(`${API_BASE_URL}/parametros/COLORESOPERACIONES`);
-            if (response.data && response.data.themeConfig) {
-                setParametros(prev => ({ ...prev, themeConfig: response.data.themeConfig }));
+            if (response.data) {
+                // Support both wrapped { themeConfig: ... } and direct object
+                const config = response.data.themeConfig || response.data;
+                setParametros(prev => ({ ...prev, themeConfig: config }));
             }
         } catch (error) {
             console.error('Error loading parameters:', error);
@@ -102,44 +104,13 @@ export const ParametrosProvider = ({ children }) => {
         // Define Logic Conditions
         const isCompra = tipo_accion === 'COMPRA';
         const isVenta = tipo_accion === 'VENTA';
-        const isDebe = contabilizacion === 'DEBE';
-        const isHaber = contabilizacion === 'HABER';
-
-        // Mismatches (Cruzados?)
-        // If the user defines "CRUZADO" in JSON, when does it apply?
-        // Usually Compra -> Debe (Asset Up, Liability Up? No. Asset Up, Cash Down).
-        // Let's assume the "CRUZADO" key applies to the Mismatch cases if that was the intent.
-        // BUT I will stick to the Key-Based logic:
-
-        // If Type matches a Key, use it.
-
-        // Priority:
-        // 1. If Contabilizacion is set, use that for Row Color?
-        // 2. Or if TipoAccion is set?
-
-        let targetKey = null;
-
-        // Perfect Matches (Green in previous logic, but now JSON says what?)
-        // JSON: 
-        // DEBE: Row Red
-        // HABER: Row Blue
-        // CRUZADO: Row Green
+        const isEntrada = contabilizacion === 'ENTRADA';
+        const isSalida = contabilizacion === 'SALIDA';
 
         // Logic Inference:
-        // COMPRA (+ DEBE? usually implies cash out). 
-        // VENTA (+ HABER? usually implies cash in).
+        // COMPRA (+ ENTRADA? usually implies cash IN). 
+        // VENTA (+ SALIDA? usually implies cash OUT).
 
-        if (isCompra && isDebe) return theme['CRUZADO'] || {}; // "Intercambio"
-        if (isVenta && isHaber) return theme['CRUZADO'] || {};
-
-        if (isVenta && isDebe) return theme['DEBE'] || {}; // Red
-        if (isCompra && isHaber) return theme['HABER'] || {}; // Blue
-
-        // Fallbacks for partials
-        if (isDebe) return theme['DEBE'] || {};
-        if (isHaber) return theme['HABER'] || {};
-        if (isVenta) return theme['VENTA'] || {}; // Inherits DEBE
-        if (isCompra) return theme['COMPRA'] || {}; // Inherits HABER
 
         return {};
     };
