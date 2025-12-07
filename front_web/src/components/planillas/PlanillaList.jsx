@@ -227,7 +227,7 @@ const PlanillaList = () => {
             headerName: 'Ingreso',
             width: 200,
             renderCell: (params) => {
-                const colorKey = params.row.moneda_ingreso?.es_nacional ? 'SALIDA' : 'VENTA';
+                const colorKey = params.row.moneda_ingreso?.es_nacional ? 'ENTRADA' : 'COMPRA';
                 return (
                     <Box>
                         {(params.row.monto_ingreso > 0 && params.row.moneda_ingreso) ? (
@@ -244,7 +244,7 @@ const PlanillaList = () => {
             headerName: 'Egreso',
             width: 200,
             renderCell: (params) => {
-                const colorKey = params.row.moneda_egreso?.es_nacional ? 'ENTRADA' : 'COMPRA';
+                const colorKey = params.row.moneda_egreso?.es_nacional ? 'SALIDA' : 'VENTA';
                 return (
                     <Box>
                         {(params.row.monto_egreso > 0 && params.row.moneda_egreso) ? (
