@@ -216,9 +216,10 @@ const PlanillaForm = () => {
             const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Error desconocido';
 
             if (errorMsg.includes('Saldo insuficiente') || error.response?.status === 400) {
+                const title = errorMsg.includes('Saldo insuficiente') ? 'Saldo Insuficiente' : 'Atención';
                 Swal.fire({
-                    title: 'Saldo Insuficiente',
-                    text: `No se pudo completar la operación: ${errorMsg}`,
+                    title: title,
+                    text: errorMsg,
                     icon: 'error',
                     confirmButtonColor: '#d33'
                 });
@@ -430,7 +431,7 @@ const PlanillaForm = () => {
                                         name="clienteId"
                                         control={control}
                                         rules={{
-                                            required: (selectedTipoMov?.es_persona_obligatoria && !isEditMode) ? 'El cliente es obligatorio para esta operación' : false
+                                            required: (selectedTipoMov?.requiere_persona && !isEditMode) ? 'El cliente es obligatorio para esta operación' : false
                                         }}
                                         render={({ field }) => (
                                             <Autocomplete
@@ -476,6 +477,9 @@ const PlanillaForm = () => {
                                 <Controller
                                     name="observaciones"
                                     control={control}
+                                    rules={{
+                                        required: (selectedTipoMov?.lleva_observacion && !isEditMode) ? 'Observación obligatoria' : false
+                                    }}
                                     render={({ field }) => (
                                         <TextField
                                             {...field}
@@ -483,6 +487,8 @@ const PlanillaForm = () => {
                                             multiline
                                             rows={2}
                                             fullWidth
+                                            error={!!errors.observaciones}
+                                            helperText={errors.observaciones?.message}
                                         />
                                     )}
                                 />

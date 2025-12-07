@@ -11,6 +11,9 @@ import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import RestoreIcon from '@mui/icons-material/Restore';
+import axios from 'axios';
+import config from '../../config'; // Adjust path if needed
 
 import ParametroService from '../../services/parametro.service';
 import ParametroForm from './ParametroForm';
@@ -77,6 +80,31 @@ const ParametroList = () => {
         fetchParametros();
     };
 
+
+
+    const handleRestoreDefaults = async () => {
+        const isConfirmed = await confirm({
+            title: 'Restaurar Parámetros Default',
+            message: '¿Desea restaurar los parámetros por defecto? Esto verificará y creará cualquier configuración base faltante (Colores, Control Saldo, etc).'
+        });
+
+        if (isConfirmed) {
+            try {
+                // Assuming ParametroService or generic axios call
+                // Since ParametroService usually has generic methods, let's just use axios for this custom endpoint or add it to service.
+                // Using axios directly for speed, or better: extend service. 
+                // Let's use axios for now as imported.
+                await axios.post(`${config.API_BASE_URL}/parametros/defaults`);
+
+                addNotification('success', 'Parámetros verificados/restaurados.');
+                fetchParametros();
+            } catch (error) {
+                console.error('Error seeding defaults:', error);
+                addNotification('error', 'Error al restaurar defaults.');
+            }
+        }
+    };
+
     const columns = [
         { field: 'clave', headerName: 'Clave', flex: 1, minWidth: 200 },
         { field: 'descripcion', headerName: 'Descripción', flex: 2, minWidth: 250 },
@@ -127,6 +155,15 @@ const ParametroList = () => {
                 </Typography>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreate}>
                     Nuevo Parámetro
+                </Button>
+                <Button
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<RestoreIcon />}
+                    onClick={handleRestoreDefaults}
+                    sx={{ ml: 2 }}
+                >
+                    Agregar parámetros default
                 </Button>
             </Box>
 

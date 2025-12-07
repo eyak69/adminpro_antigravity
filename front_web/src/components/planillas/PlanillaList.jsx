@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { Button, Container, Typography, Box } from '@mui/material';
 import Add from '@mui/icons-material/Add';
-import Edit from '@mui/icons-material/Edit';
 import Block from '@mui/icons-material/Block'; // Block icon for 'Anular'
 import { useNavigate } from 'react-router-dom';
 import planillaService from '../../services/planilla.service';
 import Swal from 'sweetalert2';
 import { useTheme } from '@mui/material/styles';
+import { useParametros } from '../../context/ParametrosContext';
+import axios from 'axios';
+import config from '../../config'; // Adjust path if needed
 
 const PlanillaList = () => {
     const [planillas, setPlanillas] = useState([]);
@@ -23,6 +25,59 @@ const PlanillaList = () => {
     const [selectedDate, setSelectedDate] = useState(getTodayString());
     const navigate = useNavigate();
     const theme = useTheme();
+    const { parametros, getCellColor, getRowThemeClass } = useParametros() || {};
+    const [editConfig, setEditConfig] = useState({ habilitado: true, dias: 0 });
+
+    useEffect(() => {
+        loadEditConfig();
+    }, []);
+
+    const loadEditConfig = async () => {
+        try {
+            const response = await axios.get(`${config.API_BASE_URL}/parametros/EDITARPLANILLAFECHAANTERIOR`);
+            if (response.data) {
+                // Ensure we parse if it's string, though usually axios parses JSON.
+                // The service returns the value field which might be stringified JSON or parsed object depending on backend service.
+                // Our backend param service returns JSON.parse(val) or val. So it should be an object.
+                const val = response.data.valor ? (typeof response.data.valor === 'string' ? JSON.parse(response.data.valor) : response.data.valor) : response.data;
+                // If the endpoint wraps it, extract. The standard endpoint usually returns the Parametro entity { clave, valor }.
+                // If we use the generic param service 'get' logic internally it returns value, but via API controller usually returns entity?
+                // Let's assume standard entity return { clave, valor: "..." } if using generic controller, OR value if specific.
+                // Wait, we don't have a param controller we viewed? 
+                // Let's assume we need to parse blindly or safe check.
+                // If response.data has 'valor', use it.
+                let finalVal = response.data.valor || response.data;
+                if (typeof finalVal === 'string') {
+                    try { finalVal = JSON.parse(finalVal); } catch (e) { }
+                }
+                setEditConfig(finalVal || { habilitado: true, dias: 0 });
+            }
+        } catch (error) {
+            console.error("Error fetching edit config", error);
+        }
+    };
+
+    const isDateEditable = (dateStr) => {
+        // dateStr is YYYY-MM-DD
+        if (!editConfig.habilitado) {
+            const today = getTodayString();
+            return dateStr === today;
+        }
+        if (editConfig.dias > 0) { // 0 equals infinite
+            const today = new Date(getTodayString());
+            const target = new Date(dateStr);
+            const diffTime = Math.abs(today - target);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            // If target is in future, we usually allow (or prevent? Assuming inputs are mostly past/present).
+            // If target is strictly past:
+            if (target < today && diffDays > editConfig.dias) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const canEditCurrent = isDateEditable(selectedDate);
 
     useEffect(() => {
         loadPlanillas();
@@ -32,8 +87,8 @@ const PlanillaList = () => {
         try {
             // selectedDate is already YYYY-MM-DD
             const data = await planillaService.getAll({ fecha: selectedDate });
-            // Sort by ID descending to see newest first
-            const sortedData = data.sort((a, b) => b.id - a.id);
+            // Sort by ID ascending (smallest first)
+            const sortedData = data.sort((a, b) => a.id - b.id);
             setPlanillas(sortedData);
         } catch (error) {
             console.error('Error al cargar planillas:', error);
@@ -120,6 +175,24 @@ const PlanillaList = () => {
             }
         },
         {
+            field: 'tipo_accion',
+            headerName: 'Acción',
+            width: 130,
+            valueGetter: (value, row) => {
+                const actualRow = row || (value && value.row);
+                return actualRow?.tipo_movimiento?.tipo_accion || '-';
+            }
+        },
+        {
+            field: 'contabilizacion',
+            headerName: 'Contabilización',
+            width: 130,
+            valueGetter: (value, row) => {
+                const actualRow = row || (value && value.row);
+                return actualRow?.tipo_movimiento?.contabilizacion || '-';
+            }
+        },
+        {
             field: 'cliente',
             headerName: 'Cliente',
             width: 180,
@@ -127,36 +200,61 @@ const PlanillaList = () => {
                 const actualRow = row || (value && value.row);
                 if (!actualRow) return '-';
                 const clientObj = actualRow.cliente || value;
-                return clientObj?.nombre || clientObj?.razon_social || '-';
+                return clientObj?.alias || clientObj?.nombre_real || '-';
+            }
+        },
+        {
+            field: 'monedas',
+            headerName: 'Monedas',
+            width: 120,
+            valueGetter: (value, row) => {
+                const actualRow = row || (value && value.row);
+                if (!actualRow) return '-';
+
+                const mIn = actualRow.moneda_ingreso?.codigo;
+                const mOut = actualRow.moneda_egreso?.codigo;
+
+                if (mIn && mOut && mIn !== mOut) {
+                    // For exchange: Show relation
+                    return `${mIn} / ${mOut}`;
+                }
+                // Unilateral or same currency (transfer)
+                return mIn || mOut || '-';
             }
         },
         {
             field: 'ingreso',
             headerName: 'Ingreso',
             width: 200,
-            renderCell: (params) => (
-                <Box>
-                    {(params.row.monto_ingreso > 0 && params.row.moneda_ingreso) ? (
-                        <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-                            {params.row.moneda_ingreso.codigo} {Number(params.row.monto_ingreso).toFixed(2)}
-                        </Typography>
-                    ) : '-'}
-                </Box>
-            )
+            renderCell: (params) => {
+                const colorKey = params.row.moneda_ingreso?.es_nacional ? 'SALIDA' : 'VENTA';
+                return (
+                    <Box>
+                        {(params.row.monto_ingreso > 0 && params.row.moneda_ingreso) ? (
+                            <Typography variant="body2" sx={{ fontWeight: 'bold', color: getCellColor(colorKey) }}>
+                                {params.row.moneda_ingreso.codigo} {Number(params.row.monto_ingreso).toFixed(2)}
+                            </Typography>
+                        ) : '-'}
+                    </Box>
+                );
+            }
         },
         {
             field: 'egreso',
             headerName: 'Egreso',
             width: 200,
-            renderCell: (params) => (
-                <Box>
-                    {(params.row.monto_egreso > 0 && params.row.moneda_egreso) ? (
-                        <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'error.main' }}>
-                            {params.row.moneda_egreso.codigo} {Number(params.row.monto_egreso).toFixed(2)}
-                        </Typography>
-                    ) : '-'}
-                </Box>
-            )
+            renderCell: (params) => {
+                const colorKey = params.row.moneda_egreso?.es_nacional ? 'ENTRADA' : 'COMPRA';
+                return (
+                    <Box>
+                        {(params.row.monto_egreso > 0 && params.row.moneda_egreso) ? (
+                            <Typography variant="body2" sx={{ fontWeight: 'bold', color: getCellColor(colorKey) }}>
+                                {params.row.moneda_egreso.codigo} {Number(params.row.monto_egreso).toFixed(2)}
+                            </Typography>
+                        ) : '-'}
+                    </Box>
+                );
+            }
         },
 
         {
@@ -183,17 +281,12 @@ const PlanillaList = () => {
                 const isAnulada = params.row.deleted_at != null;
                 return (
                     <Box>
-                        <Button
-                            startIcon={<Edit />}
-                            onClick={() => navigate(`/planillas/editar/${params.row.id}`)}
-                            size="small"
-                        >
-                            Ver/Editar
-                        </Button>
+
                         {!isAnulada && (
                             <Button
                                 startIcon={<Block />}
                                 color="error"
+                                disabled={!canEditCurrent}
                                 onClick={() => handleAnular(params.row.id)}
                                 size="small"
                                 sx={{ ml: 1 }}
@@ -229,6 +322,7 @@ const PlanillaList = () => {
                         variant="contained"
                         color="primary"
                         startIcon={<Add />}
+                        disabled={!canEditCurrent}
                         onClick={() => navigate('/planillas/nuevo', { state: { initialDate: selectedDate } })}
                     >
                         Nueva Operación
@@ -248,15 +342,25 @@ const PlanillaList = () => {
                             showQuickFilter: true,
                         },
                     }}
-                    getRowClassName={(params) =>
-                        params.row.deleted_at ? 'row-anulada' : ''
-                    }
+                    getRowClassName={(params) => {
+                        if (params.row.deleted_at) return 'row-anulada';
+                        const adaptedRow = {
+                            tipo_accion: params.row.tipo_movimiento?.tipo_accion,
+                            contabilizacion: params.row.tipo_movimiento?.contabilizacion
+                        };
+                        const themeClass = getRowThemeClass ? getRowThemeClass(adaptedRow) : '';
+                        return themeClass;
+                    }}
                     sx={{
                         '& .row-anulada': {
                             backgroundColor: theme.palette.action.hover,
                             color: theme.palette.text.disabled,
                             fontStyle: 'italic',
                         },
+                        '& .row-cruzada': {
+                            backgroundColor: parametros?.themeConfig?.CRUZADO?.backgroundColor || 'rgba(0, 0, 0, 0.04)',
+                            color: parametros?.themeConfig?.CRUZADO?.textColor || 'inherit'
+                        }
                     }}
                 />
             </Box>

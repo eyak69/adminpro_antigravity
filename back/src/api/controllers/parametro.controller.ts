@@ -63,3 +63,13 @@ export const deleteParametro = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 };
+
+export const seedDefaults = async (req: Request, res: Response) => {
+    try {
+        await ParametroService.seedDefaults();
+        res.status(200).json({ message: "Parámetros restaurados correctamente." });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error al restaurar parámetros." });
+    }
+};

@@ -22,7 +22,7 @@ export const AppDataSource = new DataSource({
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
-    synchronize: true, // Don't use this in production
+    synchronize: false, // Don't use this in production
     logging: false,
     entities: [Moneda, StockCaja, Cliente, Operacion, TipoMovimiento, PlanillaDiaria, CtaCteSaldo, CtaCteMovimiento, SystemLog, Parametro],
     migrations: [],

@@ -36,12 +36,11 @@ export const CtaCteRepository = AppDataSource.getRepository(CtaCteMovimiento).ex
                 });
             }
 
-            const monto = Number(movimientoData.monto);
-            if (movimientoData.tipo === TipoMovimientoCtaCte.DEBITO) {
-                saldoEntity.saldo_actual = Number(saldoEntity.saldo_actual) + monto;
-            } else {
-                saldoEntity.saldo_actual = Number(saldoEntity.saldo_actual) - monto;
-            }
+            // Logic: Ingreso (Entra a CtaCte/Deuda) increases Saldo. Egreso (Sale de CtaCte/Pago) decreases Saldo.
+            const egreso = Number(movimientoData.monto_egreso || 0);
+            const ingreso = Number(movimientoData.monto_ingreso || 0);
+
+            saldoEntity.saldo_actual = Number(saldoEntity.saldo_actual) + ingreso - egreso;
 
             await saldoRepo.save(saldoEntity);
         });

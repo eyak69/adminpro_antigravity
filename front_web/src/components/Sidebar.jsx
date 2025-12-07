@@ -24,6 +24,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
+import AccountBoxIcon from '@mui/icons-material/AccountBox';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 
@@ -34,6 +35,7 @@ const menuItems = [
     { text: 'Monedas', icon: <AttachMoneyIcon />, path: '/monedas' },
     { text: 'Operaciones', icon: <SettingsEthernetIcon />, path: '/operaciones' },
     { text: 'Planilla Diaria', icon: <ReceiptLongIcon />, path: '/planillas' },
+    { text: 'Cta. Cte. Clientes', icon: <AccountBoxIcon />, path: '/ctacte/cliente' },
     { text: 'Tipos Movimiento', icon: <SwapHorizIcon />, path: '/tipos-movimiento' },
 
     { text: 'Clientes', icon: <PeopleIcon />, path: '/clientes' },

@@ -237,24 +237,22 @@ async function seed() {
         if (cliente && dolar) {
             const saldo = await CtaCteRepository.getSaldo(cliente.id, dolar.id);
             if (saldo === 0) {
-                // Initial Debt (DEBITO)
+                // Initial Debt (DEBITO -> Ingreso/Deuda)
                 await CtaCteRepository.registrarMovimiento({
                     fecha_operacion: new Date(),
-                    tipo: TipoMovimientoCtaCte.DEBITO,
                     cliente: cliente,
                     moneda: dolar,
-                    monto: 1000,
+                    monto_ingreso: 1000,
                     observaciones: "Deuda Inicial Seed",
                 });
                 console.log("Created CtaCte Movimiento: DEBITO 1000 USD");
 
-                // Partial Payment (CREDITO)
+                // Partial Payment (CREDITO -> Egreso/Pago)
                 await CtaCteRepository.registrarMovimiento({
                     fecha_operacion: new Date(),
-                    tipo: TipoMovimientoCtaCte.CREDITO,
                     cliente: cliente,
                     moneda: dolar,
-                    monto: 500,
+                    monto_egreso: 500,
                     observaciones: "Pago Parcial Seed",
                 });
                 console.log("Created CtaCte Movimiento: CREDITO 500 USD");

@@ -21,8 +21,56 @@ export interface TransactionDTO {
 }
 
 export class TransactionService {
+    private async validateDateRestriction(fechaOperacion: string | Date): Promise<void> {
+        const paramStr = await parametroService.get('EDITARPLANILLAFECHAANTERIOR');
+
+        let config = { habilitado: true, dias: 0 };
+        if (paramStr) {
+            // paramStr comes as parsed JSON from service.get() if it's valid JSON
+            // But let's handle if it returns the string or object
+            config = (typeof paramStr === 'string' ? JSON.parse(paramStr) : paramStr) || config;
+        }
+
+        if (!config.habilitado) {
+            // Verify if today matches operation date
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const opDate = new Date(fechaOperacion);
+            // Handle timezones loosely or strictly? 
+            // Better to normalize to YYYY-MM-DD
+            const opDateStr = opDate.toISOString().split('T')[0];
+            const todayStr = today.toISOString().split('T')[0];
+
+            if (opDateStr !== todayStr) {
+                throw new Error("No está habilitada la edición/creación de operaciones en fechas anteriores.");
+            }
+        } else {
+            // Habilitado is true. Check 'dias'.
+            if (config.dias > 0) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const opDate = new Date(fechaOperacion);
+                opDate.setHours(0, 0, 0, 0);
+
+                const diffTime = Math.abs(today.getTime() - opDate.getTime());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                // If opDate is in the future? Usually allowed unless restricted.
+                // Assuming restriction is for PAST dates.
+                if (opDate < today && diffDays > config.dias) {
+                    throw new Error(`Solo se pueden editar/crear operaciones de hasta ${config.dias} días de antigüedad.`);
+                }
+            }
+        }
+    }
+
     async procesarTransaccion(dto: TransactionDTO): Promise<PlanillaDiaria> {
-        return await AppDataSource.transaction(async (entityManager) => {
+        // Validate Date Restriction BEFORE transaction
+        await this.validateDateRestriction(dto.fecha_operacion);
+
+        return await AppDataSource.transaction<PlanillaDiaria>(async (entityManager) => {
             // 1. Repositorios (dentro de la transacción)
             const tipoMovRepo = entityManager.getRepository(TipoMovimiento);
             const monedaRepo = entityManager.getRepository(Moneda);
@@ -57,8 +105,13 @@ export class TransactionService {
                 throw new Error(`El movimiento ${tipoMov.nombre} requiere una cotización válida.`);
             }
 
+            if (tipoMov.lleva_observacion && !dto.observaciones) {
+                throw new Error(`El movimiento ${tipoMov.nombre} requiere una observación obligatoria.`);
+            }
+
             // Determinar fecha de operación
-            const fechaOperacion = new Date(dto.fecha_operacion);
+            // Evitar conversión a Date si ya es string (YYYY-MM-DD) para evitar shifts de Timezone
+            const fechaOperacion: any = dto.fecha_operacion;
 
             // 3. Determinar Moneda Nacional (para contraparte en cambios)
             const monedaNacional = await monedaRepo.findOneBy({ es_nacional: true });
@@ -239,26 +292,41 @@ export class TransactionService {
                 // Caja DEBE (Entrada) -> Cta Cte CREDITO (Disminuye deuda)
                 // Caja HABER (Salida) -> Cta Cte DEBITO (Aumenta deuda)
 
-                let tipoCtaCte: TipoMovimientoCtaCte;
+                let montoIngresoCtaCte = 0;
+                let montoEgresoCtaCte = 0;
 
-                if (tipoMov.contabilizacion === Contabilizacion.ENTRADA) {
-                    tipoCtaCte = TipoMovimientoCtaCte.CREDITO;
-                } else if (tipoMov.contabilizacion === Contabilizacion.SALIDA) {
-                    tipoCtaCte = TipoMovimientoCtaCte.DEBITO;
+                // Force cast checks to avoid TS "no overlap" error
+                let isEntrada = (tipoMov.contabilizacion as any) === Contabilizacion.ENTRADA;
+                let isSalida = (tipoMov.contabilizacion as any) === Contabilizacion.SALIDA;
+
+                // Fallback: Inferir de la Acción si no está explícita la contabilización
+                if (!isEntrada && !isSalida) {
+                    const accion = tipoMov.tipo_accion;
+                    if (accion === AccionMovimiento.COMPRA || accion === AccionMovimiento.ENTRADA) {
+                        isEntrada = true;
+                    } else if (accion === AccionMovimiento.VENTA || accion === AccionMovimiento.SALIDA) {
+                        isSalida = true;
+                    }
+                }
+
+                if (!isEntrada && !isSalida) {
+                    throw new Error("Configuración inconsistente: graba_cta_cte es true pero no se puede determinar si es ENTRADA o SALIDA (ni por Contabilización ni por Acción).");
+                }
+
+                if (isEntrada) {
+                    // ENTRADA de caja (Cobro) -> sale de Cta Cte (Egreso) -> Cliente paga.
+                    montoEgresoCtaCte = dto.monto;
                 } else {
-                    // Si es NEUTRO o no definido, y graba_cta_cte es true, necesitamos una regla por defecto o error.
-                    // Asumiremos que si es VENTA (Sale dinero) es DEBITO, si es COMPRA (Entra dinero) es CREDITO?
-                    // Mejor basarse estrictamente en la contabilización de la caja.
-                    throw new Error("Configuración inconsistente: graba_cta_cte es true pero la contabilización no es ENTRADA ni SALIDA.");
+                    // SALIDA de caja (Prestamo/Pago a cliente) -> entra en Cta Cte (Ingreso) -> Cliente recibe.
+                    montoIngresoCtaCte = dto.monto;
                 }
 
                 const ctaCteMov = ctaCteMovRepo.create({
                     fecha_operacion: fechaOperacion,
-                    tipo: tipoCtaCte,
                     cliente: cliente,
-                    moneda: moneda, // La moneda de la Cta Cte suele ser la moneda de la operación principal
-                    monto: dto.monto, // El monto nominal
-                    cotizacion_aplicada: dto.cotizacion,
+                    moneda: moneda,
+                    monto_ingreso: montoIngresoCtaCte,
+                    monto_egreso: montoEgresoCtaCte,
                     observaciones: `Ref: Planilla #${savedPlanilla.id} - ${dto.observaciones || ''}`,
                     planilla_asociada: savedPlanilla
                 });
@@ -275,28 +343,36 @@ export class TransactionService {
                         moneda: moneda,
                         saldo_actual: 0
                     });
-                    await ctaCteSaldoRepo.save(saldoEntity); // Save first to get ID if needed, though not strictly necessary for create
+                    await ctaCteSaldoRepo.save(saldoEntity);
                 }
 
-                // Actualización atómica del saldo
-                if (tipoCtaCte === TipoMovimientoCtaCte.DEBITO) {
-                    await ctaCteSaldoRepo.increment({ id: saldoEntity.id }, "saldo_actual", dto.monto);
-                } else {
-                    await ctaCteSaldoRepo.decrement({ id: saldoEntity.id }, "saldo_actual", dto.monto);
+                // Balance Calculation Logic
+                if (montoIngresoCtaCte > 0) {
+                    await ctaCteSaldoRepo.increment({ id: saldoEntity.id }, "saldo_actual", montoIngresoCtaCte);
+                }
+                if (montoEgresoCtaCte > 0) {
+                    await ctaCteSaldoRepo.decrement({ id: saldoEntity.id }, "saldo_actual", montoEgresoCtaCte);
                 }
             }
 
             return savedPlanilla;
         });
     }
+
     async anularTransaccion(id: number): Promise<void> {
+        // Preliminary check and validation outside transaction
+        const planillaCheck = await AppDataSource.getRepository(PlanillaDiaria).findOneBy({ id });
+        if (!planillaCheck) throw new Error("Transacción no encontrada");
+
+        await this.validateDateRestriction(planillaCheck.fecha_operacion);
+
         return await AppDataSource.transaction(async (entityManager) => {
             const planillaRepo = entityManager.getRepository(PlanillaDiaria);
             const stockRepo = entityManager.getRepository(StockCaja);
             const ctaCteMovRepo = entityManager.getRepository(CtaCteMovimiento);
             const ctaCteSaldoRepo = entityManager.getRepository(CtaCteSaldo);
 
-            // 1. Obtener la planilla
+            // 1. Obtener la planilla (Need to fetch again inside transaction for consistency/locking)
             const planilla = await planillaRepo.findOne({
                 where: { id },
                 relations: ["tipo_movimiento", "moneda_ingreso", "moneda_egreso", "cliente"]
@@ -337,12 +413,16 @@ export class TransactionService {
 
                 if (saldoEntity) {
                     // Invertir el impacto:
-                    // Si fue DEBITO (aumentó deuda), ahora restamos (decrement).
-                    // Si fue CREDITO (disminuyó deuda), ahora sumamos (increment).
-                    if (ctaCteMov.tipo === TipoMovimientoCtaCte.DEBITO) {
-                        await ctaCteSaldoRepo.decrement({ id: saldoEntity.id }, "saldo_actual", ctaCteMov.monto);
-                    } else {
-                        await ctaCteSaldoRepo.increment({ id: saldoEntity.id }, "saldo_actual", ctaCteMov.monto);
+                    // Si fue DEUDA (Egreso), ahora RESTAMOS (decrement).
+                    // Si fue PAGO (Ingreso), ahora SUMAMOS (increment) -> Returning debt basically.
+                    // Invertir el impacto (Anulación):
+                    // Si fue INGRESO (Deuda subió), ahora RESTAMOS.
+                    // Si fue EGRESO (Deuda bajó/pagó), ahora SUMAMOS.
+                    if (ctaCteMov.monto_ingreso > 0) {
+                        await ctaCteSaldoRepo.decrement({ id: saldoEntity.id }, "saldo_actual", ctaCteMov.monto_ingreso);
+                    }
+                    if (ctaCteMov.monto_egreso > 0) {
+                        await ctaCteSaldoRepo.increment({ id: saldoEntity.id }, "saldo_actual", ctaCteMov.monto_egreso);
                     }
                 }
 

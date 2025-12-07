@@ -10,11 +10,8 @@ export class CtaCteMovimiento extends AuditableEntity {
     @PrimaryGeneratedColumn()
     id!: number;
 
-    @Column({ type: "datetime" })
+    @Column({ type: "date" })
     fecha_operacion!: Date;
-
-    @Column({ type: "enum", enum: TipoMovimientoCtaCte })
-    tipo!: TipoMovimientoCtaCte;
 
     @ManyToOne(() => Cliente)
     cliente!: Cliente;
@@ -22,11 +19,14 @@ export class CtaCteMovimiento extends AuditableEntity {
     @ManyToOne(() => Moneda)
     moneda!: Moneda;
 
-    @Column({ type: "decimal", precision: 18, scale: 4 })
-    monto!: number;
 
-    @Column({ type: "decimal", precision: 18, scale: 6, nullable: true })
-    cotizacion_aplicada!: number | null;
+    /* Legacy fields removed: tipo, monto, cotizacion_aplicada */
+
+    @Column({ type: "decimal", precision: 18, scale: 4, default: 0 })
+    monto_ingreso!: number;
+
+    @Column({ type: "decimal", precision: 18, scale: 4, default: 0 })
+    monto_egreso!: number;
 
     @Column({ type: "text", nullable: true })
     observaciones!: string | null;

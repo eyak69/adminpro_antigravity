@@ -19,7 +19,7 @@ export class PlanillaService {
         return await PlanillaRepository.find({
             where,
             relations: ["tipo_movimiento", "cliente", "moneda_ingreso", "moneda_egreso"],
-            order: { fecha_operacion: "DESC" },
+            order: { id: "ASC" },
         });
     }
 

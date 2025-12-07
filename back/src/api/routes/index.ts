@@ -20,7 +20,7 @@ const transactionService = new TransactionService();
 const transactionController = new TransactionController(transactionService);
 const transactionRoutes = createTransactionRouter(transactionController);
 
-import parametroRoutes from "./parametro.routes";
+import { parametroRoutes } from "./parametro.routes";
 
 
 router.use("/monedas", monedaRoutes);

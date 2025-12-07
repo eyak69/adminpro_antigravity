@@ -120,7 +120,8 @@ export const ParametrosProvider = ({ children }) => {
         loading,
         refreshParametros,
         getCellColor,
-        getRowTheme
+        getRowTheme,
+        getRowThemeClass
     };
 
     return (

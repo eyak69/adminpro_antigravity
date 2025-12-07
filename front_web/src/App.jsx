@@ -11,6 +11,7 @@ import ParametroList from './components/parametros/ParametroList';
 
 import PlanillaList from './components/planillas/PlanillaList';
 import PlanillaForm from './components/planillas/PlanillaForm';
+import CtaCtePorCliente from './components/ctacte/CtaCtePorCliente';
 import { ConfirmProvider } from './context/ConfirmContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ParametrosProvider } from './context/ParametrosContext';
@@ -33,6 +34,7 @@ function App() {
                 <Route path="planillas/editar/:id" element={<PlanillaForm />} />
                 <Route path="configuracion" element={<ConfiguracionPage />} />
                 <Route path="parametros" element={<ParametroList />} />
+                <Route path="ctacte/cliente" element={<CtaCtePorCliente />} />
                 {/* Add more routes here later */}
                 <Route path="*" element={<DashboardHome />} />
               </Route>
