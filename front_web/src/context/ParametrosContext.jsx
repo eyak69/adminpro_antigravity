@@ -56,8 +56,8 @@ export const ParametrosProvider = ({ children }) => {
         // 1. Check for Crossed (CRUZADO)
         // VENTA + DEBE  or  COMPRA + HABER
         if (
-            (tipo_accion === 'VENTA' && contabilizacion === 'DEBE') ||
-            (tipo_accion === 'COMPRA' && contabilizacion === 'HABER')
+            (tipo_accion === 'VENTA' && contabilizacion === 'ENTRADA') ||
+            (tipo_accion === 'COMPRA' && contabilizacion === 'SALIDA')
         ) {
             // Wait, previous request was Red for Mismatch. 
             // BUT user JSON says "CRUZADO" description "Intercambio de monedas... Fila Verde suave".

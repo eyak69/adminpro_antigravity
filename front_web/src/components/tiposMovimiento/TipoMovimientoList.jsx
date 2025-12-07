@@ -135,7 +135,7 @@ const TipoMovimientoList = () => {
             headerName: 'Contab.',
             width: 100,
             type: 'singleSelect',
-            valueOptions: ['DEBE', 'HABER'],
+            valueOptions: ['ENTRADA', 'SALIDA'],
             renderCell: (params) => {
                 if (!params.value) return '';
                 const color = getCellColor(params.value);

@@ -70,7 +70,7 @@ const TipoMovimientoForm = ({ open, onClose, onSubmit, initialData }) => {
                 reset({
                     nombre: '',
                     tipo_accion: '', // Default to empty instead of COMPRA
-                    contabilizacion: '', // Default to empty instead of DEBE
+                    contabilizacion: '', // Default to empty instead of ENTRADA
                     requiere_persona: false,
                     es_persona_obligatoria: false,
                     requiere_cotizacion: false,
