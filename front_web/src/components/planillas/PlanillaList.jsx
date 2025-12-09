@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
-import { Button, Container, Typography, Box } from '@mui/material';
+import { Button, Container, Typography, Box, Grid } from '@mui/material';
 import Add from '@mui/icons-material/Add';
 import Block from '@mui/icons-material/Block'; // Block icon for 'Anular'
 import { useNavigate } from 'react-router-dom';
@@ -10,6 +10,9 @@ import { useTheme } from '@mui/material/styles';
 import { useParametros } from '../../context/ParametrosContext';
 import axios from 'axios';
 import config from '../../config'; // Adjust path if needed
+import { StockCard, VipStockCard } from '../stock';
+
+import MagicInput from './MagicInput';
 
 const PlanillaList = () => {
     const [planillas, setPlanillas] = useState([]);
@@ -199,8 +202,14 @@ const PlanillaList = () => {
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row);
                 if (!actualRow) return '-';
-                const clientObj = actualRow.cliente || value;
-                return clientObj?.alias || clientObj?.nombre_real || '-';
+                const clientObj = actualRow.cliente;
+                if (!clientObj) return '-';
+
+                // Request: "nombre (alias)" if nombre exists, else just "alias"
+                if (clientObj.nombre_real) {
+                    return `${clientObj.nombre_real} (${clientObj.alias})`;
+                }
+                return clientObj.alias || '-';
             }
         },
         {
@@ -232,7 +241,7 @@ const PlanillaList = () => {
                     <Box>
                         {(params.row.monto_ingreso > 0 && params.row.moneda_ingreso) ? (
                             <Typography variant="body2" sx={{ fontWeight: 'bold', color: getCellColor(colorKey) }}>
-                                {params.row.moneda_ingreso.codigo} {Number(params.row.monto_ingreso).toFixed(2)}
+                                {params.row.moneda_ingreso.codigo} {Number(params.row.monto_ingreso).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </Typography>
                         ) : '-'}
                     </Box>
@@ -249,7 +258,7 @@ const PlanillaList = () => {
                     <Box>
                         {(params.row.monto_egreso > 0 && params.row.moneda_egreso) ? (
                             <Typography variant="body2" sx={{ fontWeight: 'bold', color: getCellColor(colorKey) }}>
-                                {params.row.moneda_egreso.codigo} {Number(params.row.monto_egreso).toFixed(2)}
+                                {params.row.moneda_egreso.codigo} {Number(params.row.monto_egreso).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </Typography>
                         ) : '-'}
                     </Box>
@@ -302,6 +311,11 @@ const PlanillaList = () => {
 
     return (
         <Container maxWidth="xl">
+            {/* Magic Input */}
+            <Box sx={{ mt: 3 }}>
+                <MagicInput />
+            </Box>
+
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', my: 3 }}>
                 <Typography variant="h4" component="h1">
                     Planilla Diaria
@@ -364,6 +378,16 @@ const PlanillaList = () => {
                     }}
                 />
             </Box>
+
+            {/* Stock and VIP Cards */}
+            <Grid container spacing={3} sx={{ mt: 2, mb: 4 }}>
+                <Grid item xs={12} md={6}>
+                    <StockCard refreshTrigger={planillas} />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                    <VipStockCard refreshTrigger={planillas} />
+                </Grid>
+            </Grid>
         </Container>
     );
 };

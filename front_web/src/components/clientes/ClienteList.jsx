@@ -95,6 +95,16 @@ const ClienteList = () => {
             )
         },
         {
+            field: 'es_vip',
+            headerName: 'VIP',
+            width: 100,
+            renderCell: (params) => (
+                params.value ?
+                    <Chip label="VIP" color="primary" size="small" variant="filled" /> :
+                    <Chip label="No" color="default" size="small" variant="outlined" />
+            )
+        },
+        {
             field: 'actions',
             headerName: '',
             width: 120,

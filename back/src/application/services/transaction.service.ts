@@ -109,8 +109,11 @@ export class TransactionService {
                 throw new Error(`El movimiento ${tipoMov.nombre} requiere una observación obligatoria.`);
             }
 
+            // Determinar si impacta en stock (VIP o Anónimo = SI, No VIP = NO)
+            // Default: Si no hay cliente, impacta. Si hay cliente, depende del flag es_vip.
+            const impactaStock = !cliente || cliente.es_vip;
+
             // Determinar fecha de operación
-            // Evitar conversión a Date si ya es string (YYYY-MM-DD) para evitar shifts de Timezone
             const fechaOperacion: any = dto.fecha_operacion;
 
             // 3. Determinar Moneda Nacional (para contraparte en cambios)
@@ -131,55 +134,54 @@ export class TransactionService {
             // Determinar si es Circuito Completo (Cambio) o Unilateral
             const esCambio = tipoMov.requiere_cotizacion;
 
-            // Normalizar Acción: Si no tiene tipo_accion, usamos contabilizacion
+            // Normalizar Acción
             let accion = tipoMov.tipo_accion;
             if (!accion) {
                 if (tipoMov.contabilizacion === Contabilizacion.ENTRADA) {
-                    accion = AccionMovimiento.ENTRADA; // ENTRADA = Entra dinero (Activo aumenta)
+                    accion = AccionMovimiento.ENTRADA;
                 } else if (tipoMov.contabilizacion === Contabilizacion.SALIDA) {
-                    accion = AccionMovimiento.SALIDA;  // SALIDA = Sale dinero (Activo disminuye)
+                    accion = AccionMovimiento.SALIDA;
                 }
             }
 
             if (accion === AccionMovimiento.VENTA) {
-                // VENTA: Sale Moneda Extranjera (Egreso) de la caja
-                const stockSalida = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
-
-                if (shouldValidate) {
-                    if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
-                        throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la venta.`);
-                    }
-                }
-
+                // VENTA: Sale Moneda Extranjera (Egreso)
                 monedaEgreso = moneda;
                 montoEgreso = dto.monto;
 
-                // Actualizar Stock de SALIDA (Decrementar)
-                if (stockSalida) {
-                    stockUpdatePromises.push(
-                        stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", dto.monto)
-                    );
-                } else {
-                    const newStock = stockRepo.create({ moneda: moneda, saldo_actual: -dto.monto });
-                    stockUpdatePromises.push(stockRepo.save(newStock));
+                if (impactaStock) {
+                    const stockSalida = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
+                    if (shouldValidate) {
+                        if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
+                            throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la venta.`);
+                        }
+                    }
+                    if (stockSalida) {
+                        stockUpdatePromises.push(
+                            stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", dto.monto)
+                        );
+                    } else {
+                        const newStock = stockRepo.create({ moneda: moneda, saldo_actual: -dto.monto });
+                        stockUpdatePromises.push(stockRepo.save(newStock));
+                    }
                 }
 
                 // INGRESO
                 if (esCambio) {
-                    // Es Cambio: Calculamos Ingreso en Moneda Nacional
                     monedaIngreso = monedaNacional;
                     montoIngreso = dto.monto * (dto.cotizacion || 1);
 
-                    let stockEntrada = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
-                    if (!stockEntrada) {
-                        stockEntrada = stockRepo.create({ moneda: monedaNacional, saldo_actual: 0 });
-                        await stockRepo.save(stockEntrada);
+                    if (impactaStock) {
+                        let stockEntrada = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
+                        if (!stockEntrada) {
+                            stockEntrada = stockRepo.create({ moneda: monedaNacional, saldo_actual: 0 });
+                            await stockRepo.save(stockEntrada);
+                        }
+                        stockUpdatePromises.push(
+                            stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
+                        );
                     }
-                    stockUpdatePromises.push(
-                        stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
-                    );
                 } else {
-                    // Unilateral: No hay ingreso registrado
                     monedaIngreso = null;
                     montoIngreso = 0;
                 }
@@ -189,41 +191,40 @@ export class TransactionService {
                 monedaIngreso = moneda;
                 montoIngreso = dto.monto;
 
-                // Actualizar Stock de ENTRADA (Incrementar)
-                let stockEntrada = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
-                if (!stockEntrada) {
-                    stockEntrada = stockRepo.create({ moneda: moneda, saldo_actual: 0 });
-                    await stockRepo.save(stockEntrada);
+                if (impactaStock) {
+                    let stockEntrada = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
+                    if (!stockEntrada) {
+                        stockEntrada = stockRepo.create({ moneda: moneda, saldo_actual: 0 });
+                        await stockRepo.save(stockEntrada);
+                    }
+                    stockUpdatePromises.push(
+                        stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
+                    );
                 }
-                stockUpdatePromises.push(
-                    stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
-                );
 
                 // EGRESO
                 if (esCambio) {
-                    // Es Cambio: Sale Moneda Nacional
                     const montoPesos = dto.monto * (dto.cotizacion || 1);
-                    const stockSalida = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
-
-                    if (shouldValidate) {
-                        if (!stockSalida || Number(stockSalida.saldo_actual) < montoPesos) {
-                            throw new Error(`Saldo insuficiente en ${monedaNacional.codigo} para realizar la compra.`);
-                        }
-                    }
-
                     monedaEgreso = monedaNacional;
                     montoEgreso = montoPesos;
 
-                    if (stockSalida) {
-                        stockUpdatePromises.push(
-                            stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
-                        );
-                    } else {
-                        const newStock = stockRepo.create({ moneda: monedaNacional, saldo_actual: -montoEgreso });
-                        stockUpdatePromises.push(stockRepo.save(newStock));
+                    if (impactaStock) {
+                        const stockSalida = await stockRepo.findOneBy({ moneda: { id: monedaNacional.id } });
+                        if (shouldValidate) {
+                            if (!stockSalida || Number(stockSalida.saldo_actual) < montoPesos) {
+                                throw new Error(`Saldo insuficiente en ${monedaNacional.codigo} para realizar la compra.`);
+                            }
+                        }
+                        if (stockSalida) {
+                            stockUpdatePromises.push(
+                                stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
+                            );
+                        } else {
+                            const newStock = stockRepo.create({ moneda: monedaNacional, saldo_actual: -montoEgreso });
+                            stockUpdatePromises.push(stockRepo.save(newStock));
+                        }
                     }
                 } else {
-                    // Unilateral: No hay egreso registrado
                     monedaEgreso = null;
                     montoEgreso = 0;
                 }
@@ -235,37 +236,39 @@ export class TransactionService {
                 monedaEgreso = null;
                 montoEgreso = 0;
 
-                let stockEntrada = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
-                if (!stockEntrada) {
-                    stockEntrada = stockRepo.create({ moneda: moneda, saldo_actual: 0 });
-                    await stockRepo.save(stockEntrada);
+                if (impactaStock) {
+                    let stockEntrada = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
+                    if (!stockEntrada) {
+                        stockEntrada = stockRepo.create({ moneda: moneda, saldo_actual: 0 });
+                        await stockRepo.save(stockEntrada);
+                    }
+                    stockUpdatePromises.push(
+                        stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
+                    );
                 }
-                stockUpdatePromises.push(
-                    stockRepo.increment({ id: stockEntrada.id }, "saldo_actual", montoIngreso)
-                );
 
             } else if (accion === AccionMovimiento.SALIDA) {
                 // Salida simple
-                const stockSalida = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
-
-                if (shouldValidate) {
-                    if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
-                        throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la salida.`);
-                    }
-                }
-
                 monedaEgreso = moneda;
                 montoEgreso = dto.monto;
                 monedaIngreso = null;
                 montoIngreso = 0;
 
-                if (stockSalida) {
-                    stockUpdatePromises.push(
-                        stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
-                    );
-                } else {
-                    const newStock = stockRepo.create({ moneda: moneda, saldo_actual: -montoEgreso });
-                    stockUpdatePromises.push(stockRepo.save(newStock));
+                if (impactaStock) {
+                    const stockSalida = await stockRepo.findOneBy({ moneda: { id: moneda.id } });
+                    if (shouldValidate) {
+                        if (!stockSalida || Number(stockSalida.saldo_actual) < dto.monto) {
+                            throw new Error(`Saldo insuficiente en ${moneda.codigo} para realizar la salida.`);
+                        }
+                    }
+                    if (stockSalida) {
+                        stockUpdatePromises.push(
+                            stockRepo.decrement({ id: stockSalida.id }, "saldo_actual", montoEgreso)
+                        );
+                    } else {
+                        const newStock = stockRepo.create({ moneda: moneda, saldo_actual: -montoEgreso });
+                        stockUpdatePromises.push(stockRepo.save(newStock));
+                    }
                 }
             }
 
@@ -282,24 +285,18 @@ export class TransactionService {
                 monto_egreso: montoEgreso,
                 cotizacion_aplicada: dto.cotizacion,
                 observaciones: dto.observaciones,
+                impacta_stock: impactaStock // Guardamos el flag
             });
 
             const savedPlanilla = await planillaRepo.save(planilla);
 
-            // 6. Impacto en Cta Cte (Si corresponde)
+            // 6. Impacto en Cta Cte (Si corresponde) - Esto sigue igual, independiente del Stock
             if (tipoMov.graba_cta_cte && cliente) {
-                // Lógica de Mapeo:
-                // Caja DEBE (Entrada) -> Cta Cte CREDITO (Disminuye deuda)
-                // Caja HABER (Salida) -> Cta Cte DEBITO (Aumenta deuda)
-
                 let montoIngresoCtaCte = 0;
                 let montoEgresoCtaCte = 0;
-
-                // Force cast checks to avoid TS "no overlap" error
                 let isEntrada = (tipoMov.contabilizacion as any) === Contabilizacion.ENTRADA;
                 let isSalida = (tipoMov.contabilizacion as any) === Contabilizacion.SALIDA;
 
-                // Fallback: Inferir de la Acción si no está explícita la contabilización
                 if (!isEntrada && !isSalida) {
                     const accion = tipoMov.tipo_accion;
                     if (accion === AccionMovimiento.COMPRA || accion === AccionMovimiento.ENTRADA) {
@@ -310,14 +307,12 @@ export class TransactionService {
                 }
 
                 if (!isEntrada && !isSalida) {
-                    throw new Error("Configuración inconsistente: graba_cta_cte es true pero no se puede determinar si es ENTRADA o SALIDA (ni por Contabilización ni por Acción).");
+                    throw new Error("Configuración inconsistente: graba_cta_cte es true pero no se puede determinar si es ENTRADA o SALIDA.");
                 }
 
                 if (isEntrada) {
-                    // ENTRADA de caja (Cobro) -> sale de Cta Cte (Egreso) -> Cliente paga.
                     montoEgresoCtaCte = dto.monto;
                 } else {
-                    // SALIDA de caja (Prestamo/Pago a cliente) -> entra en Cta Cte (Ingreso) -> Cliente recibe.
                     montoIngresoCtaCte = dto.monto;
                 }
 
@@ -332,7 +327,6 @@ export class TransactionService {
                 });
                 await ctaCteMovRepo.save(ctaCteMov);
 
-                // Actualizar Saldo Cta Cte
                 let saldoEntity = await ctaCteSaldoRepo.findOne({
                     where: { cliente: { id: cliente.id }, moneda: { id: moneda.id } }
                 });
@@ -346,7 +340,6 @@ export class TransactionService {
                     await ctaCteSaldoRepo.save(saldoEntity);
                 }
 
-                // Balance Calculation Logic
                 if (montoIngresoCtaCte > 0) {
                     await ctaCteSaldoRepo.increment({ id: saldoEntity.id }, "saldo_actual", montoIngresoCtaCte);
                 }
@@ -381,22 +374,23 @@ export class TransactionService {
             if (!planilla) throw new Error("Transacción no encontrada");
 
             // 2. Revertir Stock
-            // Si hubo ingreso, ahora sale (decrement). Si hubo egreso, ahora entra (increment).
-            if (planilla.moneda_ingreso && planilla.monto_ingreso > 0) {
-                const stockIngreso = await stockRepo.findOneBy({ moneda: { id: planilla.moneda_ingreso.id } });
-                if (stockIngreso) {
-                    await stockRepo.decrement({ id: stockIngreso.id }, "saldo_actual", planilla.monto_ingreso);
+            // Solo si la planilla dice que impactó stock
+            if (planilla.impacta_stock) {
+                if (planilla.moneda_ingreso && planilla.monto_ingreso > 0) {
+                    const stockIngreso = await stockRepo.findOneBy({ moneda: { id: planilla.moneda_ingreso.id } });
+                    if (stockIngreso) {
+                        await stockRepo.decrement({ id: stockIngreso.id }, "saldo_actual", planilla.monto_ingreso);
+                    }
                 }
-            }
 
-            if (planilla.moneda_egreso && planilla.monto_egreso > 0) {
-                let stockEgreso = await stockRepo.findOneBy({ moneda: { id: planilla.moneda_egreso.id } });
-                if (!stockEgreso) {
-                    // Si por alguna razón no existe, lo creamos para poder devolver el saldo
-                    stockEgreso = stockRepo.create({ moneda: planilla.moneda_egreso, saldo_actual: 0 });
-                    await stockRepo.save(stockEgreso);
+                if (planilla.moneda_egreso && planilla.monto_egreso > 0) {
+                    let stockEgreso = await stockRepo.findOneBy({ moneda: { id: planilla.moneda_egreso.id } });
+                    if (!stockEgreso) {
+                        stockEgreso = stockRepo.create({ moneda: planilla.moneda_egreso, saldo_actual: 0 });
+                        await stockRepo.save(stockEgreso);
+                    }
+                    await stockRepo.increment({ id: stockEgreso.id }, "saldo_actual", planilla.monto_egreso);
                 }
-                await stockRepo.increment({ id: stockEgreso.id }, "saldo_actual", planilla.monto_egreso);
             }
 
             // 3. Revertir Cta Cte (Si aplica)

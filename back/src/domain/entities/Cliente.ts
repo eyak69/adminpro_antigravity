@@ -22,6 +22,9 @@ export class Cliente extends AuditableEntity {
     @Column({ type: "boolean", default: false })
     es_moroso!: boolean;
 
+    @Column({ type: "boolean", default: false })
+    es_vip!: boolean; // Si es true, sus movimientos impactan en el StockCaja
+
     // TODO: Add OneToMany relation with CuentaCorriente
     // @OneToMany(() => CuentaCorriente, (cc) => cc.cliente)
     // cuentasCorrientes: CuentaCorriente[];

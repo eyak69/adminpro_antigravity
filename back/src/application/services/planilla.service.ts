@@ -3,7 +3,7 @@ import { PlanillaDiaria } from "../../domain/entities/PlanillaDiaria";
 import { TipoMovimientoRepository } from "../../infrastructure/repositories/tipoMovimiento.repository";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { MonedaRepository } from "../../infrastructure/repositories/moneda.repository";
-import { Raw } from "typeorm";
+import { Raw, Brackets } from "typeorm";
 
 
 export class PlanillaService {
@@ -50,5 +50,29 @@ export class PlanillaService {
             console.error("Error anulling transaction:", error);
             return false;
         }
+    }
+
+    async getLastCotizacion(monedaId: number, tipoAccion?: string): Promise<number> {
+        // Construct the relation filter for tipo_movimiento if action is provided
+        const tipoMovFilter = tipoAccion ? { tipo_accion: tipoAccion as any } : undefined;
+
+        const lastOp = await PlanillaRepository.findOne({
+            where: [
+                {
+                    moneda_ingreso: { id: monedaId },
+                    cotizacion_aplicada: Raw(alias => `${alias} IS NOT NULL AND ${alias} > 0`),
+                    ...(tipoMovFilter ? { tipo_movimiento: tipoMovFilter } : {})
+                },
+                {
+                    moneda_egreso: { id: monedaId },
+                    cotizacion_aplicada: Raw(alias => `${alias} IS NOT NULL AND ${alias} > 0`),
+                    ...(tipoMovFilter ? { tipo_movimiento: tipoMovFilter } : {})
+                }
+            ],
+            order: { fecha_operacion: "DESC", id: "DESC" },
+            relations: ["tipo_movimiento"]
+        });
+
+        return lastOp?.cotizacion_aplicada || 0;
     }
 }

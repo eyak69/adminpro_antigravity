@@ -9,5 +9,6 @@ router.get("/:id", planillaController.getById);
 // router.post("/", (req, res) => controller.create(req, res)); // Disabled to enforce TransactionService
 router.put("/:id", planillaController.update);
 router.delete("/:id", planillaController.delete);
+router.get("/last-cotizacion/:monedaId", planillaController.getLastCotizacion);
 
 export default router;

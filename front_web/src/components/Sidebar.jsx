@@ -152,10 +152,10 @@ const Sidebar = ({ open, onClose }) => {
                         background: 'linear-gradient(45deg, #2563eb 30%, #7c3aed 90%)'
                     }}
                 >
-                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>A</Typography>
+                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>M</Typography>
                 </Box>
                 <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'white' }}>
-                    Antigravity
+                    Manolo
                 </Typography>
             </Box>
 

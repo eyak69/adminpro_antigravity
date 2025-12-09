@@ -15,6 +15,7 @@ import tipoMovimientoService from '../../services/tipoMovimiento.service';
 import clienteService from '../../services/cliente.service';
 import monedaService from '../../services/moneda.service';
 import operacionService from '../../services/operacion.service';
+import { NumericFormat } from 'react-number-format';
 
 const PlanillaForm = () => {
     const navigate = useNavigate();
@@ -119,15 +120,18 @@ const PlanillaForm = () => {
                 }
 
                 // Smart UX: Reset fields based on config if NOT editing
-                if (!isEditMode) {
+                // SKIP clearing if we have smartData pre-fill pending
+                if (!isEditMode && !location.state?.smartData) {
                     if (!tipo.requiere_persona) {
                         setValue('clienteId', '');
                     }
                     if (!tipo.requiere_cotizacion) {
                         setValue('cotizacion', '');
                     } else {
-                        // Smart Default: Suggest 1000 if empty
-                        if (!watch('cotizacion')) setValue('cotizacion', 1000);
+                        // Smart Default: Fetch Last Quotation for this currency
+                        if (availableMonedas.length === 1 || watch('monedaId')) {
+                            // ...
+                        }
                     }
                     // Reset Observaciones if not required
                     if (!tipo.lleva_observacion) {
@@ -141,6 +145,29 @@ const PlanillaForm = () => {
         }
     }, [selectedTipoMovId, tiposMovimiento, monedas, isEditMode, setValue]);
 
+    // NEW: Smart Quotation Fetcher
+    const selectedMonedaId = useWatch({ control, name: 'monedaId' });
+
+    useEffect(() => {
+        const fetchCotizacion = async () => {
+            if (selectedMonedaId && selectedTipoMov?.requiere_cotizacion && !isEditMode) {
+                try {
+                    // Send the action (COMPRA/VENTA) if available to refine prediction
+                    const action = selectedTipoMov.tipo_accion;
+                    const lastCot = await planillaService.getLastCotizacion(selectedMonedaId, action);
+                    // Only set if we got a value (even 0 is a value, but usually we want > 0 to be useful)
+                    // Requirements say: "last val or 0".
+                    // If 0, maybe leave empty or set 0? User said "poner 0".
+                    setValue('cotizacion', lastCot);
+                } catch (err) {
+                    console.error("Error fetching last cotizacion", err);
+                }
+            }
+        };
+        fetchCotizacion();
+    }, [selectedMonedaId, selectedTipoMov, isEditMode, setValue]);
+
+
 
     const loadCatalogs = async () => {
         try {
@@ -152,7 +179,11 @@ const PlanillaForm = () => {
             ]);
             setOperaciones(opsData);
             setTiposMovimiento(tiposData);
-            setClientes(clientesData);
+
+            // Filter only VIP Clients for selection
+            const vipClientes = clientesData.filter(c => c.es_vip);
+            setClientes(vipClientes);
+
             setMonedas(monedasData);
             setIsLoading(false);
         } catch (error) {
@@ -162,9 +193,48 @@ const PlanillaForm = () => {
         }
     };
 
+    // Apply Smart Data after catalogs are loaded
+    useEffect(() => {
+        if (!isLoading && location.state?.smartData) {
+            const sd = location.state.smartData;
+
+            // Set values if provided by AI
+            if (sd.tipoMovimientoId) {
+                // Critical: We must reverse-engineer the OperacionId for the form to calculate the cascade
+                const tipo = tiposMovimiento.find(t => t.id === sd.tipoMovimientoId);
+                if (tipo && tipo.operacion) {
+                    setValue('operacionId', tipo.operacion.id || tipo.operacion);
+                }
+                setValue('tipoMovimientoId', sd.tipoMovimientoId);
+            }
+
+            // Wait for cascading? useForm setValue is usually sync, but effects run a bit later.
+            // Since we blocked the clearing logic in the cascade effect above, we can set these safely.
+
+            if (sd.clienteId) setValue('clienteId', sd.clienteId);
+            if (sd.monedaId) setValue('monedaId', sd.monedaId);
+            if (sd.monto) setValue('monto', sd.monto);
+            if (sd.cotizacion) setValue('cotizacion', sd.cotizacion);
+            if (sd.observaciones) setValue('observaciones', sd.observaciones);
+        }
+    }, [isLoading, location.state, setValue, tiposMovimiento]);
+
     const loadPlanilla = async () => {
         try {
             const data = await planillaService.getById(id);
+
+            // SPECIAL HANDLE: If editing a record with a non-VIP client (legacy), 
+            // ensure they appear in the options so the form doesn't look broken.
+            if (data.cliente) {
+                setClientes(prev => {
+                    const exists = prev.some(c => c.id === data.cliente.id);
+                    if (!exists) {
+                        return [...prev, data.cliente];
+                    }
+                    return prev;
+                });
+            }
+
             // We need to reverse-engineer cascading selections
             // 1. Set Operacion (from TipoMovimiento's operation)
             const opId = data.tipo_movimiento?.operacion?.id || '';
@@ -196,7 +266,13 @@ const PlanillaForm = () => {
                     cliente: data.clienteId ? { id: data.clienteId } : null,
                     fecha_operacion: data.fecha_operacion
                 });
-                Swal.fire('Actualizado', 'Registro actualizado correctamente.', 'success');
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Actualizado',
+                    text: 'Registro actualizado correctamente.',
+                    showConfirmButton: false,
+                    timer: 1500
+                });
             } else {
                 const payload = {
                     ...data,
@@ -207,7 +283,13 @@ const PlanillaForm = () => {
                     cotizacion: data.cotizacion ? Number(data.cotizacion) : undefined
                 };
                 await planillaService.create(payload);
-                Swal.fire('Creado', 'Transacción registrada exitosamente.', 'success');
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Creado',
+                    text: 'Transacción registrada exitosamente.',
+                    showConfirmButton: false,
+                    timer: 1500
+                });
             }
             navigate('/planillas');
         } catch (error) {
@@ -229,7 +311,7 @@ const PlanillaForm = () => {
         }
     };
 
-    const totalConversion = (Number(monto || 0) * Number(cotizacion || 0)).toFixed(2);
+    const totalConversion = (Number(monto || 0) * Number(cotizacion || 0)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     if (isLoading) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
@@ -362,15 +444,23 @@ const PlanillaForm = () => {
                                 name="monto"
                                 control={control}
                                 rules={{ required: !isEditMode ? 'Requerido' : false, min: 0.01 }}
-                                render={({ field }) => (
-                                    <TextField
-                                        {...field}
+                                render={({ field: { onChange, name, value, ref } }) => (
+                                    <NumericFormat
+                                        customInput={TextField}
                                         label="Monto"
-                                        type="number"
+                                        value={value}
+                                        onValueChange={(values) => {
+                                            onChange(values.value);
+                                        }}
+                                        thousandSeparator="."
+                                        decimalSeparator=","
+                                        decimalScale={4}
+                                        fixedDecimalScale={true}
                                         fullWidth
                                         disabled={isEditMode}
                                         error={!!errors.monto}
                                         helperText={errors.monto?.message}
+                                        getInputRef={ref}
                                     />
                                 )}
                             />
@@ -387,17 +477,25 @@ const PlanillaForm = () => {
                                         required: (selectedTipoMov?.requiere_cotizacion && !isEditMode) ? 'Cotización requerida' : false,
                                         min: { value: 0.0001, message: 'Cotización debe ser mayor a 0' }
                                     }}
-                                    render={({ field }) => (
-                                        <TextField
-                                            {...field}
+                                    render={({ field: { onChange, name, value, ref } }) => (
+                                        <NumericFormat
+                                            customInput={TextField}
                                             label="Cotización"
-                                            type="number"
+                                            value={value}
+                                            onValueChange={(values) => {
+                                                onChange(values.value);
+                                            }}
+                                            thousandSeparator="."
+                                            decimalSeparator=","
+                                            decimalScale={4}
+                                            fixedDecimalScale={true}
                                             fullWidth
                                             disabled={isEditMode || (selectedTipoMov && !selectedTipoMov.requiere_cotizacion)}
                                             error={!!errors.cotizacion}
                                             helperText={errors.cotizacion?.message}
+                                            getInputRef={ref}
                                             sx={{
-                                                display: (selectedTipoMov && !selectedTipoMov.requiere_cotizacion && !field.value) ? 'none' : 'block'
+                                                display: (selectedTipoMov && !selectedTipoMov.requiere_cotizacion && !value) ? 'none' : 'block'
                                             }}
                                         />
                                     )}

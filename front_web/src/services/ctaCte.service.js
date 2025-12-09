@@ -11,7 +11,13 @@ const getSaldo = async (clienteId, monedaId) => {
     return response.data;
 };
 
+const getSaldosVip = async () => {
+    const response = await axios.get(`${config.API_BASE_URL}/cta-cte/saldos-vip`);
+    return response.data;
+};
+
 export default {
     getMovimientos,
-    getSaldo
+    getSaldo,
+    getSaldosVip
 };

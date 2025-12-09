@@ -25,6 +25,15 @@ export class CtaCteController {
         }
     }
 
+    async getSaldosVip(req: Request, res: Response) {
+        try {
+            const saldos = await ctaCteService.getSaldosVip();
+            res.json(saldos);
+        } catch (error) {
+            res.status(500).json({ message: "Error al obtener saldos VIP", error });
+        }
+    }
+
     // POST registrarMovimiento removed to enforce TransactionService usage
     // async registrarMovimiento(req: Request, res: Response) { ... }
 }

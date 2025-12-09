@@ -20,6 +20,7 @@ const ClienteForm = ({ open, onClose, onSubmit, initialData }) => {
             documento: '',
             notas: '',
             es_moroso: false,
+            es_vip: false,
         },
     });
 
@@ -33,6 +34,7 @@ const ClienteForm = ({ open, onClose, onSubmit, initialData }) => {
                 documento: '',
                 notas: '',
                 es_moroso: false,
+                es_vip: false,
             });
         }
     }, [initialData, reset]);
@@ -103,6 +105,16 @@ const ClienteForm = ({ open, onClose, onSubmit, initialData }) => {
                                 <FormControlLabel
                                     control={<Switch {...field} checked={field.value} color="error" />}
                                     label="Es Moroso"
+                                />
+                            )}
+                        />
+                        <Controller
+                            name="es_vip"
+                            control={control}
+                            render={({ field }) => (
+                                <FormControlLabel
+                                    control={<Switch {...field} checked={field.value} color="primary" />}
+                                    label="Cliente VIP (Suma en Stock)"
                                 />
                             )}
                         />

@@ -54,4 +54,15 @@ export class PlanillaController {
             res.status(500).json({ message: "Error al eliminar registro de planilla", error });
         }
     }
+
+    async getLastCotizacion(req: Request, res: Response) {
+        try {
+            const monedaId = parseInt(req.params.monedaId);
+            const tipoAccion = req.query.accion as string | undefined;
+            const cotizacion = await planillaService.getLastCotizacion(monedaId, tipoAccion);
+            res.json({ cotizacion });
+        } catch (error) {
+            res.status(500).json({ message: "Error getting last cotizacion", error });
+        }
+    }
 }

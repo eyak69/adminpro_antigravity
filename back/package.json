@@ -18,6 +18,7 @@
     "express": "^4.21.1",
     "helmet": "^8.0.0",
     "mysql2": "^3.11.4",
+    "openai": "^6.10.0",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^0.3.20"
   },

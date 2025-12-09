@@ -1,4 +1,5 @@
 import { AppDataSource } from "../database/data-source";
+import { Raw } from "typeorm";
 import { CtaCteMovimiento } from "../../domain/entities/CtaCteMovimiento";
 import { CtaCteSaldo } from "../../domain/entities/CtaCteSaldo";
 import { TipoMovimientoCtaCte } from "../../domain/enums/TipoMovimientoCtaCte";
@@ -51,6 +52,17 @@ export const CtaCteRepository = AppDataSource.getRepository(CtaCteMovimiento).ex
             where: { cliente: { id: clienteId } },
             relations: ["cliente", "moneda", "planilla_asociada"],
             order: { fecha_operacion: "DESC" }
+        });
+    },
+
+    async getSaldosVip(): Promise<CtaCteSaldo[]> {
+        return await AppDataSource.getRepository(CtaCteSaldo).find({
+            where: {
+                cliente: { es_vip: true },
+                saldo_actual: Raw(alias => `${alias} != 0`)
+            },
+            relations: ["cliente", "moneda"],
+            order: { cliente: { alias: "ASC" } }
         });
     }
 });

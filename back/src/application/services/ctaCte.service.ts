@@ -12,6 +12,10 @@ export class CtaCteService {
         return await CtaCteRepository.getMovimientos(clienteId);
     }
 
+    async getSaldosVip(): Promise<any[]> {
+        return await CtaCteRepository.getSaldosVip();
+    }
+
     /*
     async registrarMovimiento(data: any): Promise<void> {
         const cliente = await ClienteRepository.findOneBy({ id: data.clienteId });

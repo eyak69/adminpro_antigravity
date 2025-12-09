@@ -1,4 +1,4 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn } from "typeorm";
 import { AuditableEntity } from "./AuditableEntity";
 import { TipoMovimiento } from "./TipoMovimiento";
 import { Cliente } from "./Cliente";
@@ -40,4 +40,7 @@ export class PlanillaDiaria extends AuditableEntity {
 
     @Column({ type: "text", nullable: true })
     observaciones!: string | null;
+
+    @Column({ type: "boolean", default: true })
+    impacta_stock!: boolean;
 }

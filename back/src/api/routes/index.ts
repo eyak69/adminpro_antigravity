@@ -10,6 +10,7 @@ import { createTransactionRouter } from "./transaction.routes";
 import { TransactionController } from "../controllers/transaction.controller";
 import { TransactionService } from "../../application/services/transaction.service";
 import logRoutes from "./log.routes";
+import aiRoutes from "./ai.routes";
 
 import fs from 'fs';
 import path from 'path';
@@ -33,6 +34,7 @@ router.use("/cta-cte", ctaCteRoutes);
 router.use("/transactions", transactionRoutes);
 router.use("/logs", logRoutes);
 router.use("/parametros", parametroRoutes);
+router.use("/ai", aiRoutes);
 
 
 try {

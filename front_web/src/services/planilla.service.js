@@ -33,10 +33,18 @@ const remove = async (id) => {
     return response.data;
 };
 
+const getLastCotizacion = async (monedaId, tipoAccion) => {
+    const params = {};
+    if (tipoAccion) params.accion = tipoAccion;
+    const response = await axios.get(`${API_URL}/last-cotizacion/${monedaId}`, { params });
+    return response.data.cotizacion; // Access .cotizacion property from response object
+};
+
 export default {
     getAll,
     getById,
     create,
     update,
     remove,
+    getLastCotizacion,
 };
