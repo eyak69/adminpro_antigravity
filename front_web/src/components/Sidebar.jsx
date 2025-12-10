@@ -12,6 +12,7 @@ import {
     useMediaQuery,
     useTheme,
     Collapse,
+    Tooltip,
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
@@ -39,8 +40,7 @@ const menuItems = [
     { text: 'Tipos Movimiento', icon: <SwapHorizIcon />, path: '/tipos-movimiento' },
 
     { text: 'Clientes', icon: <PeopleIcon />, path: '/clientes' },
-    { text: 'Productos', icon: <ShoppingBagIcon />, path: '/productos' },
-    { text: 'Reportes', icon: <BarChartIcon />, path: '/reportes' },
+
     {
         text: 'Configuración',
         icon: <SettingsIcon />,
@@ -51,40 +51,59 @@ const menuItems = [
     },
 ];
 
-const Sidebar = ({ open, onClose }) => {
+const Sidebar = ({ open, onClose, isCollapsed }) => {
     const theme = useTheme();
     const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
     const location = useLocation();
     const navigate = useNavigate();
     const [openSubmenus, setOpenSubmenus] = useState({});
 
+    // Dynamic width
+    const currentDrawerWidth = isCollapsed && isDesktop ? 80 : drawerWidth;
+
     const handleToggle = (text) => {
+        if (isCollapsed) return; // Disable toggle in collapsed mode or handle differently
         setOpenSubmenus(prev => ({
             ...prev,
             [text]: !prev[text]
         }));
     };
 
+    // Auto-expand checks... 
+    React.useEffect(() => {
+        if (!isCollapsed) {
+            const newOpen = {};
+            // Helper recursive check
+            const checkItems = (items) => {
+                items.forEach(item => {
+                    if (item.children) {
+                        const isChildActive = item.children.some(child => child.path === location.pathname);
+                        if (isChildActive) {
+                            newOpen[item.text] = true;
+                        }
+                        // Recursive if we had deeper levels, but here only 2 levels.
+                    }
+                });
+            };
+            checkItems(menuItems);
+
+            if (Object.keys(newOpen).length > 0) {
+                setOpenSubmenus(prev => ({ ...prev, ...newOpen }));
+            }
+        }
+    }, [location.pathname, isCollapsed]);
+
     const renderMenuItem = (item, depth = 0) => {
         const hasChildren = item.children && item.children.length > 0;
         const active = location.pathname === item.path;
         const isOpen = openSubmenus[item.text] || false;
 
-        // Auto-expand if child is active
-        React.useEffect(() => {
-            if (hasChildren) {
-                const isChildActive = item.children.some(child => child.path === location.pathname);
-                if (isChildActive && !openSubmenus[item.text]) {
-                    setOpenSubmenus(prev => ({ ...prev, [item.text]: true }));
-                }
-            }
-        }, [location.pathname]);
-
         const buttonSx = {
             borderRadius: '12px',
             bgcolor: active ? 'rgba(255,255,255,0.1)' : 'transparent',
             color: active ? 'primary.light' : 'rgba(255,255,255,0.7)',
-            pl: 2 + (depth * 2), // Indentation
+            pl: isCollapsed ? 2 : 2 + (depth * 2), // Standard padding if collapsed
+            justifyContent: isCollapsed ? 'center' : 'flex-start',
             mb: 1,
             '&:hover': {
                 bgcolor: 'rgba(255,255,255,0.05)',
@@ -92,58 +111,80 @@ const Sidebar = ({ open, onClose }) => {
             },
         };
 
+        const icon = (
+            <ListItemIcon sx={{
+                color: active ? 'inherit' : 'rgba(255,255,255,0.7)',
+                minWidth: isCollapsed ? 0 : 40,
+                mr: isCollapsed ? 0 : 2,
+                justifyContent: 'center'
+            }}>
+                {item.icon}
+            </ListItemIcon>
+        );
+
         if (hasChildren) {
             return (
                 <React.Fragment key={item.text}>
-                    <ListItem disablePadding sx={{ display: 'block' }}>
-                        <ListItemButton onClick={() => handleToggle(item.text)} sx={buttonSx}>
-                            <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
-                                {item.icon}
-                            </ListItemIcon>
-                            <ListItemText
-                                primary={item.text}
-                                primaryTypographyProps={{ fontSize: '0.95rem', fontWeight: 500 }}
-                            />
-                            {isOpen ? <ExpandLess /> : <ExpandMore />}
-                        </ListItemButton>
-                        <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                            <List component="div" disablePadding>
-                                {item.children.map(child => renderMenuItem(child, depth + 1))}
-                            </List>
-                        </Collapse>
-                    </ListItem>
+                    <Tooltip title={isCollapsed ? item.text : ''} placement="right">
+                        <ListItem disablePadding sx={{ display: 'block' }}>
+                            <ListItemButton onClick={() => handleToggle(item.text)} sx={buttonSx}>
+                                {icon}
+                                {!isCollapsed && (
+                                    <>
+                                        <ListItemText
+                                            primary={item.text}
+                                            primaryTypographyProps={{ fontSize: '0.95rem', fontWeight: 500 }}
+                                        />
+                                        {isOpen ? <ExpandLess /> : <ExpandMore />}
+                                    </>
+                                )}
+                            </ListItemButton>
+                            {!isCollapsed && (
+                                <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                                    <List disablePadding>
+                                        {item.children.map(child => renderMenuItem(child, depth + 1))}
+                                    </List>
+                                </Collapse>
+                            )}
+                        </ListItem>
+                    </Tooltip>
                 </React.Fragment>
             );
         }
 
         return (
-            <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
-                <ListItemButton
-                    onClick={() => navigate(item.path)}
-                    sx={buttonSx}
-                >
-                    <ListItemIcon sx={{ color: active ? 'inherit' : 'rgba(255,255,255,0.7)', minWidth: 40 }}>
-                        {item.icon}
-                    </ListItemIcon>
-                    <ListItemText
-                        primary={item.text}
-                        primaryTypographyProps={{
-                            fontWeight: active ? 600 : 400,
-                            fontSize: '0.95rem'
-                        }}
-                    />
-                </ListItemButton>
-            </ListItem>
+            <React.Fragment key={item.text}>
+                <Tooltip title={isCollapsed ? item.text : ''} placement="right">
+                    <ListItem disablePadding sx={{ display: 'block' }}>
+                        <ListItemButton
+                            onClick={() => navigate(item.path)}
+                            sx={buttonSx}
+                        >
+                            {icon}
+                            {!isCollapsed && (
+                                <ListItemText
+                                    primary={item.text}
+                                    primaryTypographyProps={{
+                                        fontWeight: active ? 600 : 400,
+                                        fontSize: '0.95rem'
+                                    }}
+                                />
+                            )}
+                        </ListItemButton>
+                    </ListItem>
+                </Tooltip>
+            </React.Fragment>
         );
     };
 
     const content = (
-        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflowX: 'hidden' }}>
+            <Box sx={{ p: isCollapsed ? 2 : 3, display: 'flex', alignItems: 'center', justifyContent: isCollapsed ? 'center' : 'flex-start', gap: 2, transition: 'all 0.3s' }}>
                 <Box
                     sx={{
                         width: 40,
                         height: 40,
+                        minWidth: 40,
                         bgcolor: 'primary.main',
                         borderRadius: '12px',
                         display: 'flex',
@@ -154,9 +195,11 @@ const Sidebar = ({ open, onClose }) => {
                 >
                     <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>M</Typography>
                 </Box>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'white' }}>
-                    Manolo
-                </Typography>
+                {!isCollapsed && (
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'white', whiteSpace: 'nowrap' }}>
+                        AdminPro 2
+                    </Typography>
+                )}
             </Box>
 
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
@@ -172,11 +215,18 @@ const Sidebar = ({ open, onClose }) => {
             <Drawer
                 variant="permanent"
                 sx={{
-                    width: drawerWidth,
+                    width: currentDrawerWidth,
                     flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                    boxSizing: 'border-box',
                     '& .MuiDrawer-paper': {
-                        width: drawerWidth,
+                        width: currentDrawerWidth,
                         boxSizing: 'border-box',
+                        transition: theme.transitions.create('width', {
+                            easing: theme.transitions.easing.sharp,
+                            duration: theme.transitions.duration.enteringScreen,
+                        }),
+                        overflowX: 'hidden',
                     },
                 }}
                 open
@@ -185,7 +235,7 @@ const Sidebar = ({ open, onClose }) => {
             </Drawer>
         );
     }
-
+    // Mobile drawer remains same
     return (
         <Drawer
             variant="temporary"

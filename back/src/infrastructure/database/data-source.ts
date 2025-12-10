@@ -10,6 +10,7 @@ import { PlanillaDiaria } from "../../domain/entities/PlanillaDiaria";
 import { CtaCteSaldo } from "../../domain/entities/CtaCteSaldo";
 import { CtaCteMovimiento } from "../../domain/entities/CtaCteMovimiento";
 import { SystemLog } from "../../domain/entities/SystemLog";
+import { User } from "../../domain/entities/User";
 
 dotenv.config();
 
@@ -24,7 +25,7 @@ export const AppDataSource = new DataSource({
     database: process.env.DB_DATABASE,
     synchronize: false, // Don't use this in production
     logging: false,
-    entities: [Moneda, StockCaja, Cliente, Operacion, TipoMovimiento, PlanillaDiaria, CtaCteSaldo, CtaCteMovimiento, SystemLog, Parametro],
+    entities: [Moneda, StockCaja, Cliente, Operacion, TipoMovimiento, PlanillaDiaria, CtaCteSaldo, CtaCteMovimiento, SystemLog, Parametro, User],
     migrations: [],
     subscribers: [],
 });

@@ -15,6 +15,6 @@ export class CtaCteSaldo extends AuditableEntity {
     @ManyToOne(() => Moneda)
     moneda!: Moneda;
 
-    @Column({ type: "decimal", precision: 18, scale: 4, default: 0 })
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
     saldo_actual!: number;
 }

@@ -15,9 +15,10 @@ export class AiService {
     }
 
     async parseTransaction(text: string) {
-        // 1. Fetch Context
+        // 1. Fetch Context (Optimized: No Clients)
         const monedas = await AppDataSource.getRepository(Moneda).find({ select: ["id", "codigo", "nombre"] });
-        const clientes = await AppDataSource.getRepository(Cliente).find({ select: ["id", "alias", "nombre_real"] });
+        // Removed Clients list to save tokens. We will resolve client locally.
+
         // Fetch operations to give more context about the hierarchy
         const operaciones = await AppDataSource.getRepository(Operacion).find({ select: ["id", "nombre"] });
         const tipos = await AppDataSource.getRepository(TipoMovimiento).find({
@@ -25,44 +26,50 @@ export class AiService {
             relations: ["operacion"]
         });
 
-        // 2. Construct Prompt
+        // Fetch recent history for "Learning" capabilities
+        const history = await AppDataSource.getRepository("PlanillaDiaria").find({
+            where: { observaciones: { $not: null } },
+            order: { id: "DESC" },
+            take: 10, // Reduced from 20 to 10 for token optimization
+            relations: ["tipo_movimiento"]
+        });
+
+        const historyExamples = history.map((h: any) => ({
+            desc: h.observaciones,
+            type: h.tipo_movimiento?.nombre
+        })).filter(h => h.desc && h.type);
+
+        // 2. Construct Prompt (Optimized)
         const prompt = `
-        You are an **EXPERT AI assistant in Currency Exchange and Financial Operations**.
-        Your goal is to accurately parse natural language commands into structured transaction data.
+        You are an **EXPERT AI assistant in Currency Exchange**.
+        Parse natural language commands into structured data.
 
         User Input: "${text}"
 
-        *** CONTEXT DATA ***
-        - **Operations** (High Level Categories): ${JSON.stringify(operaciones.map((o: any) => ({ id: o.id, name: o.nombre })))}
-        - **Transaction Types** (Specific Actions): ${JSON.stringify(tipos.map((t: any) => ({
+        *** CONTEXT ***
+        - Ops: ${JSON.stringify(operaciones.map((o: any) => ({ id: o.id, n: o.nombre })))}
+        - Types: ${JSON.stringify(tipos.map((t: any) => ({
             id: t.id,
-            name: t.nombre,
-            action: t.tipo_accion,
-            belongs_to_operation: t.operacion?.nombre
+            n: t.nombre,
+            act: t.tipo_accion,
         })))}
-        - **Currencies**: ${JSON.stringify(monedas.map((m: any) => ({ id: m.id, code: m.codigo, name: m.nombre })))}
-        - **Clients**: ${JSON.stringify(clientes.map((c: any) => ({ id: c.id, alias: c.alias, name: c.nombre_real })))}
+        - Currencies: ${JSON.stringify(monedas.map((m: any) => ({ id: m.id, c: m.codigo, n: m.nombre })))}
+        
+        *** HABITS ***
+        ${JSON.stringify(historyExamples)}
 
-        *** PARSING RULES ***
-        1. **MATCH ACTION**: Look for keywords like "Compra", "Venta", "Gasto", "Ingreso", "Egreso", "Retiro".
-           - Map these to the most appropriate 'tipoMovimientoId'.
-           - *Example*: "Compra" -> usually matches type "Compra de Divisa" (Entry/Ingreso of stock).
-           - *Example*: "Venta" -> usually matches type "Venta de Divisa" (Exit/Egreso of stock).
-        2. **MATCH CURRENCY**: Identify standard codes (USD, EUR, BRL) or common names (Dolar, Euro, Real).
-           - If "peso" or "pesos" is mentioned, it might be the base currency (ARS) or implicitly the counter-currency.
-           - Default to most likely foreign currency if context implies exchange (e.g. buying 100 usually means 100 USD/EUR, not 100 Pesos).
-        3. **EXTRACT AMOUNTS**:
-           - **'monto'**: The main volume of currency being bought/sold/moved.
-           - **'cotizacion'**: The exchange rate (e.g. "a 1200", "cotiz 1220", "x 1200").
-        4. **IDENTIFY CLIENT**: Fuzzy match the person/entity name.
-        5. **OBSERVATIONS**: Any extra details not captured above.
+        *** RULES ***
+        1. **MATCH ACTION/TYPE**: Return 'tipoMovimientoId'.
+        2. **MATCH CURRENCY**: Return 'monedaId'.
+        3. **EXTRACT VALUES**: 'monto' and 'cotizacion'.
+        4. **IDENTIFY CLIENT**: Extract the client name mentioned as text string into 'client_guess'. Do not try to find ID.
+        5. **OBSERVATIONS**: Extra details.
 
-        *** OUTPUT FORMAT ***
-        Return ONLY valid JSON (no markdown):
+        *** OUTPUT JSON ***
         {
             "tipoMovimientoId": number | null,
             "monedaId": number | null,
-            "clienteId": number | null,
+            "client_guess": string | null,
             "monto": number | null,
             "cotizacion": number | null,
             "observaciones": string
@@ -71,30 +78,173 @@ export class AiService {
 
         // 3. Call OpenAI
         try {
-            console.log("--- AI PROMPT DEBUG ---");
+            // DEBUG: LOG PROMPT
+            console.log("--- AI PARSE PROMPT ---");
             console.log(prompt);
             console.log("-----------------------");
 
             const completion = await this.openai.chat.completions.create({
-                messages: [{ role: "system", content: "You are a helpful JSON parser." }, { role: "user", content: prompt }],
-                model: "gpt-3.5-turbo",
+                messages: [{ role: "system", content: "Returns JSON only." }, { role: "user", content: prompt }],
+                model: "gpt-4o-mini",
                 temperature: 0.1,
             });
 
             const content = completion.choices[0].message.content;
-            console.log("--- AI RESPONSE DEBUG ---");
+
+            // DEBUG: LOG RESPONSE
+            console.log("--- AI PARSE RESPONSE ---");
             console.log(content);
             console.log("-------------------------");
 
-            if (!content) throw new Error("No response from AI");
+            const jsonString = content?.replace(/```json/g, "").replace(/```/g, "").trim();
+            const result = JSON.parse(jsonString || "{}");
 
-            // Clean markdown if present
-            const jsonString = content.replace(/```json/g, "").replace(/```/g, "").trim();
-            return JSON.parse(jsonString);
+            // 4. Resolve Client Locally (Token Saver)
+            if (result.client_guess) {
+                const cleanName = result.client_guess.replace(/['"]/g, "");
+                // Try fuzzy-ish search
+                const client = await AppDataSource.getRepository(Cliente).createQueryBuilder("c")
+                    .where("c.alias LIKE :name OR c.nombre_real LIKE :name", { name: `%${cleanName}%` })
+                    .getOne();
+
+                if (client) {
+                    result.clienteId = client.id;
+                }
+            }
+
+            return result;
 
         } catch (error) {
             console.error("OpenAI Error:", error);
             throw new Error("Failed to parse transaction with AI");
+        }
+    }
+    async analyzeAnomaly(data: { monedaId?: number, cotizacion?: number, tipoMovimientoId?: number, monto?: number }) {
+        if (!data.cotizacion || !data.monedaId) return { isAnomalous: false, reason: "Datos insuficientes para análisis" };
+
+        // 1. Fetch History (Context)
+        // Check both ingress and egress used this currency to get a better rate history
+        // 1. Fetch History (Context) - Using QueryBuilder for robust OR clause
+        const history = await AppDataSource.getRepository("PlanillaDiaria")
+            .createQueryBuilder("p")
+            .leftJoinAndSelect("p.moneda_ingreso", "mi")
+            .leftJoinAndSelect("p.moneda_egreso", "me")
+            .where("mi.id = :monedaId OR me.id = :monedaId", { monedaId: data.monedaId })
+            .orderBy("p.id", "DESC")
+            .limit(10) // Use limit instead of take to avoid distinctAlias error with custom selects
+            .select(["p.cotizacion_aplicada", "p.fecha_operacion", "p.monto_ingreso", "p.monto_egreso"])
+            .getMany();
+
+        const recentRates = history
+            .map((h: any) => h.cotizacion_aplicada)
+            .filter(r => r > 0);
+
+        console.log(`[AI ANALYZE] Found ${recentRates.length} historical rates for currency ${data.monedaId}:`, recentRates);
+
+        if (recentRates.length < 1) return { isAnomalous: false, reason: "Sin historial suficiente" };
+
+        // 2. Prompt
+        const prompt = `
+        You are a Financial Risk Auditor.
+        Analyze if this transaction is anomalous/suspicious based on recent history.
+
+        **New Transaction**:
+        - Rate (Cotización): ${data.cotizacion}
+        - Amount: ${data.monto}
+
+        **Recent Rate History** (Last ${recentRates.length} entries):
+        ${JSON.stringify(recentRates)}
+
+        **Rules**:
+        - Flag if the Rate is deviating significantly (>10% variance usually, but use judgement) from the recent average.
+        - Flag if it's an outlier.
+        - Ignore small fluctuations.
+        - **IMPORTANT**: The 'reason' field MUST be in **SPANISH**.
+
+        **Output JSON**:
+        {
+            "isAnomalous": boolean,
+            "severity": "LOW" | "MEDIUM" | "HIGH",
+            "reason": "Short explanation in SPANISH",
+            "suggestedRate": number | null
+        }
+        `;
+
+        // 3. AI Call
+        try {
+            // DEBUG: LOG ANOMALY PROMPT
+            console.log("--- AI ANALYZE PROMPT ---");
+            console.log(prompt);
+            console.log("-------------------------");
+
+            const completion = await this.openai.chat.completions.create({
+                messages: [{ role: "system", content: "Returns JSON only." }, { role: "user", content: prompt }],
+                model: "gpt-4o-mini",
+                temperature: 0.0,
+            });
+
+            const content = completion.choices[0].message.content;
+
+            // DEBUG: LOG ANOMALY RESPONSE
+            console.log("--- AI ANALYZE RESPONSE ---");
+            console.log(content);
+            console.log("---------------------------");
+
+            const jsonString = content?.replace(/```json/g, "").replace(/```/g, "").trim();
+            return JSON.parse(jsonString || "{}");
+
+        } catch (error) {
+            console.error("AI Anomaly Check Failed", error);
+            return { isAnomalous: false, reason: "Error de IA" };
+        }
+    }
+    async classifyTransaction(text: string, context: { operaciones: any[], tipos: any[] }) {
+        const prompt = `
+        You are an intelligent financial assistant.
+        Classify the following transaction description into the most appropriate Operation and Movement Type from the provided list.
+        Also, refine the description to be more formal and professional, in SPANISH.
+
+        User Input: "${text}"
+
+        *** CONTEXT ***
+        - Operations: ${JSON.stringify(context.operaciones.map((o: any) => ({ id: o.id, n: o.nombre })))}
+        - Types: ${JSON.stringify(context.tipos.map((t: any) => ({ id: t.id, n: t.nombre, opId: t.operacion?.id })))}
+
+        *** RULES ***
+        1. match 'operacionId' and 'tipoMovimientoId'.
+        2. 'suggestedObservation': A professional, concise description in Spanish based on the input.
+           Example: "pago luz" -> "Pago de servicio eléctrico"
+           Example: "alquiler" -> "Pago de alquiler mensual"
+        
+        *** OUTPUT JSON ***
+        {
+            "operacionId": number | null,
+            "tipoMovimientoId": number | null,
+            "suggestedObservation": string
+        }
+        `;
+
+        try {
+            console.log("--- AI CLASSIFY PROMPT ---");
+            console.log(prompt);
+            console.log("--------------------------");
+
+            const completion = await this.openai.chat.completions.create({
+                messages: [{ role: "system", content: "Returns JSON only." }, { role: "user", content: prompt }],
+                model: "gpt-4o-mini",
+                temperature: 0.1,
+            });
+
+            const content = completion.choices[0].message.content;
+            console.log("--- AI CLASSIFY RESPONSE ---");
+            console.log(content);
+            console.log("----------------------------");
+
+            const jsonString = content?.replace(/```json/g, "").replace(/```/g, "").trim();
+            return JSON.parse(jsonString || "{}");
+        } catch (error) {
+            console.error("AI Classify Failed", error);
+            return { operacionId: null, tipoMovimientoId: null, suggestedObservation: text };
         }
     }
 }

@@ -93,6 +93,7 @@ class ParametroService {
                 if (key === 'COLORESOPERACIONES') desc = 'Configuración de colores para la grilla de operaciones';
                 if (key === 'CONTROLSALDO') desc = 'Habilita o deshabilita la validación estricta de saldo suficiente';
                 if (key === 'EDITARPLANILLAFECHAANTERIOR') desc = "Configura si se pueden editar/anular planillas de fechas anteriores. dias: 0 es infinito.";
+                if (key === 'SEGURIDADGOOGLE') desc = "Activa o desactiva la autenticación obligatoria con Google. (true/false)";
 
                 await this.set(key, DEFAULT_PARAMS[key], desc);
             }

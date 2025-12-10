@@ -5,7 +5,7 @@ export const getParametro = async (req: Request, res: Response) => {
     try {
         const { clave } = req.params;
         const valor = await ParametroService.get(clave);
-        if (!valor) {
+        if (valor === null || valor === undefined) {
             res.status(404).json({ message: 'Parámetro no encontrado' });
             return;
         }
@@ -41,7 +41,7 @@ export const getAllParametros = async (req: Request, res: Response) => {
 export const createParametro = async (req: Request, res: Response) => {
     try {
         const { clave, valor, descripcion } = req.body;
-        if (!clave || !valor) {
+        if (!clave || valor === undefined || valor === null) {
             res.status(400).json({ message: 'Clave and Valor are required' });
             return;
         }

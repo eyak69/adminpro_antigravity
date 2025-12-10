@@ -65,4 +65,27 @@ export class PlanillaController {
             res.status(500).json({ message: "Error getting last cotizacion", error });
         }
     }
+    async getRates(req: Request, res: Response) {
+        try {
+            const days = req.query.days ? parseInt(req.query.days as string) : 30;
+            const monedaId = req.query.monedaId ? parseInt(req.query.monedaId as string) : undefined;
+            const rates = await planillaService.getRateEvolution(days, monedaId);
+            res.json(rates);
+        } catch (error) {
+            res.status(500).json({ message: "Error getting rates", error });
+        }
+    }
+
+    async getBalance(req: Request, res: Response) {
+        try {
+            const dateStr = req.query.date as string;
+            if (!dateStr) {
+                return res.status(400).json({ message: "Date query param is required" });
+            }
+            const balances = await planillaService.getHistoricalBalances(dateStr);
+            res.json(balances);
+        } catch (error) {
+            res.status(500).json({ message: "Error getting historical balance", error });
+        }
+    }
 }

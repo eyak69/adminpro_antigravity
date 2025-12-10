@@ -163,7 +163,7 @@ const CtaCtePorCliente = () => {
             width: 150,
             renderCell: (params) => (
                 <Typography sx={{ color: getCellColor(colorKeyIngreso), fontWeight: params.value > 0 ? 'bold' : 'normal' }}>
-                    {params.value > 0 ? `$ ${Number(params.value).toFixed(2)}` : '-'}
+                    $ {saldoActual.toFixed(6)}
                 </Typography>
             )
         },
@@ -173,7 +173,7 @@ const CtaCtePorCliente = () => {
             width: 150,
             renderCell: (params) => (
                 <Typography sx={{ color: getCellColor(colorKeyEgreso), fontWeight: params.value > 0 ? 'bold' : 'normal' }}>
-                    {params.value > 0 ? `$ ${Number(params.value).toFixed(2)}` : '-'}
+                    $ {saldoActual.toFixed(6)}
                 </Typography>
             )
         },
@@ -183,7 +183,7 @@ const CtaCtePorCliente = () => {
             width: 180,
             renderCell: (params) => (
                 <Typography fontWeight="bold">
-                    $ {Number(params.value).toFixed(2)}
+                    {params.value > 0 ? `$ ${Number(params.value).toFixed(6)}` : '-'}
                 </Typography>
             )
         }
@@ -247,7 +247,7 @@ const CtaCtePorCliente = () => {
                                 <CardContent sx={{ py: 1, '&:last-child': { pb: 1 }, textAlign: 'center' }}>
                                     <Typography variant="caption" color="text.secondary">Saldo Actual</Typography>
                                     <Typography variant="h4" color={saldoActual > 0 ? "error.main" : "success.main"} fontWeight="bold">
-                                        $ {saldoActual.toFixed(2)}
+                                        $ {saldoActual.toFixed(6)}
                                     </Typography>
                                 </CardContent>
                             </Card>

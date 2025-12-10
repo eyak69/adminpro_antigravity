@@ -56,7 +56,7 @@ const StockCard = ({ refreshTrigger }) => {
                                     fontWeight: 'bold',
                                     color: Number(item.saldo_actual) < 0 ? 'error.main' : 'primary.main'
                                 }}>
-                                    $ {Number(item.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    $ {Number(item.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
                                 </Typography>
                             </Box>
                         </Grid>

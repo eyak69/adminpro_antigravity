@@ -19,8 +19,18 @@ export const ParametrosProvider = ({ children }) => {
             // Fetch known parameters
             const response = await axios.get(`${API_BASE_URL}/parametros/COLORESOPERACIONES`);
             if (response.data) {
+                let rawData = response.data;
+                // If it's a string, try to parse it
+                if (typeof rawData === 'string') {
+                    try {
+                        rawData = JSON.parse(rawData);
+                    } catch (e) {
+                        console.error("Failed to parse COLORESOPERACIONES json", e);
+                    }
+                }
+
                 // Support both wrapped { themeConfig: ... } and direct object
-                const config = response.data.themeConfig || response.data;
+                const config = rawData.themeConfig || rawData;
                 setParametros(prev => ({ ...prev, themeConfig: config }));
             }
         } catch (error) {

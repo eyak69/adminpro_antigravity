@@ -6,9 +6,9 @@ export class Cliente extends AuditableEntity {
     @PrimaryGeneratedColumn()
     id!: number;
 
-    @Column({ type: "varchar", length: 100 })
+    @Column({ type: "varchar", length: 100, nullable: true })
     @Index() // Indexed for fast search by alias
-    alias!: string;
+    alias!: string | null;
 
     @Column({ type: "varchar", length: 150, nullable: true })
     nombre_real!: string | null;

@@ -11,6 +11,9 @@ import { TransactionController } from "../controllers/transaction.controller";
 import { TransactionService } from "../../application/services/transaction.service";
 import logRoutes from "./log.routes";
 import aiRoutes from "./ai.routes";
+import authRoutes from "./auth.routes";
+
+
 
 import fs from 'fs';
 import path from 'path';
@@ -35,6 +38,11 @@ router.use("/transactions", transactionRoutes);
 router.use("/logs", logRoutes);
 router.use("/parametros", parametroRoutes);
 router.use("/ai", aiRoutes);
+import dolarRoutes from "./dolar.routes";
+
+router.use("/dolar", dolarRoutes);
+router.use("/auth", authRoutes);
+
 
 
 try {

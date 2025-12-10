@@ -22,10 +22,10 @@ export class CtaCteMovimiento extends AuditableEntity {
 
     /* Legacy fields removed: tipo, monto, cotizacion_aplicada */
 
-    @Column({ type: "decimal", precision: 18, scale: 4, default: 0 })
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
     monto_ingreso!: number;
 
-    @Column({ type: "decimal", precision: 18, scale: 4, default: 0 })
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
     monto_egreso!: number;
 
     @Column({ type: "text", nullable: true })

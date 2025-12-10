@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import {
@@ -9,16 +9,23 @@ import {
 import Save from '@mui/icons-material/Save';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'; // Magic Icon
 import Swal from 'sweetalert2';
 import planillaService from '../../services/planilla.service';
 import tipoMovimientoService from '../../services/tipoMovimiento.service';
 import clienteService from '../../services/cliente.service';
 import monedaService from '../../services/moneda.service';
 import operacionService from '../../services/operacion.service';
+import aiService from '../../services/ai.service'; // Import AI Service
+import parametroService from '../../services/parametro.service';
+import config from '../../config';
 import { NumericFormat } from 'react-number-format';
+
+import { useAuth } from '../../context/AuthContext'; // Import Auth
 
 const PlanillaForm = () => {
     const navigate = useNavigate();
+    const { user } = useAuth(); // Get User Context
     const location = useLocation(); // Import useLocation
     const { id } = useParams();
     const isEditMode = !!id;
@@ -34,6 +41,11 @@ const PlanillaForm = () => {
     const [filteredTipos, setFilteredTipos] = useState([]);
     const [filteredMonedas, setFilteredMonedas] = useState([]);
     const [selectedTipoMov, setSelectedTipoMov] = useState(null);
+    const [checkingAI, setCheckingAI] = useState(false); // Visual indicator
+    const [aiEnabled, setAiEnabled] = useState(true); // Default true, but will load from DB
+    const [isClassifying, setIsClassifying] = useState(false); // For Magic Button
+    const [deviationConfig, setDeviationConfig] = useState({ habilitado: false, valor: 0 });
+    const [lastCotizacionRef, setLastCotizacionRef] = useState(null); // To store the reference price
 
     const getTodayString = () => {
         const d = new Date();
@@ -150,6 +162,12 @@ const PlanillaForm = () => {
 
     useEffect(() => {
         const fetchCotizacion = async () => {
+            // Avoid overwriting Smart Data quotation if it matches the current context
+            const sd = location.state?.smartData;
+            if (sd?.cotizacion && sd?.monedaId === selectedMonedaId) {
+                return;
+            }
+
             if (selectedMonedaId && selectedTipoMov?.requiere_cotizacion && !isEditMode) {
                 try {
                     // Send the action (COMPRA/VENTA) if available to refine prediction
@@ -158,6 +176,9 @@ const PlanillaForm = () => {
                     // Only set if we got a value (even 0 is a value, but usually we want > 0 to be useful)
                     // Requirements say: "last val or 0".
                     // If 0, maybe leave empty or set 0? User said "poner 0".
+                    // Requirements say: "last val or 0".
+                    // If 0, maybe leave empty or set 0? User said "poner 0".
+                    setLastCotizacionRef(lastCot); // Store for deviation check
                     setValue('cotizacion', lastCot);
                 } catch (err) {
                     console.error("Error fetching last cotizacion", err);
@@ -165,20 +186,48 @@ const PlanillaForm = () => {
             }
         };
         fetchCotizacion();
-    }, [selectedMonedaId, selectedTipoMov, isEditMode, setValue]);
+    }, [selectedMonedaId, selectedTipoMov, isEditMode, setValue, location.state]);
+
+    // NEW: Ref to track last checked state to prevent duplicate calls
+    // REMOVED REF as logic is changed
+
+
 
 
 
     const loadCatalogs = async () => {
         try {
-            const [opsData, tiposData, clientesData, monedasData] = await Promise.all([
+
+            const responses = await Promise.all([
                 operacionService.getAll(),
                 tipoMovimientoService.getAll(),
                 clienteService.getAll(),
-                monedaService.getAll()
+                monedaService.getAll(),
+                parametroService.get('CONTROLPORIA').catch(err => true),
+                parametroService.get('TASADESVICION').catch(err => ({ habilitado: true, valor: 1.5 }))
             ]);
+            const [opsData, tiposData, clientesData, monedasData, controlPoria, tasaDesviacion] = responses;
+
             setOperaciones(opsData);
             setTiposMovimiento(tiposData);
+
+            if (tasaDesviacion) {
+                // Handle if stringified or object
+                let config = tasaDesviacion;
+                if (typeof tasaDesviacion === 'string') {
+                    try { config = JSON.parse(tasaDesviacion); } catch (e) { }
+                }
+                setDeviationConfig(config);
+            }
+
+            // Set AI Status (if parameter exists, use it; otherwise default true)
+            if (controlPoria !== null && controlPoria !== undefined) {
+                if (typeof controlPoria === 'string') {
+                    setAiEnabled(controlPoria === 'true');
+                } else {
+                    setAiEnabled(!!controlPoria);
+                }
+            }
 
             // Filter only VIP Clients for selection
             const vipClientes = clientesData.filter(c => c.es_vip);
@@ -216,6 +265,7 @@ const PlanillaForm = () => {
             if (sd.monto) setValue('monto', sd.monto);
             if (sd.cotizacion) setValue('cotizacion', sd.cotizacion);
             if (sd.observaciones) setValue('observaciones', sd.observaciones);
+            if (sd.fecha) setValue('fecha_operacion', sd.fecha);
         }
     }, [isLoading, location.state, setValue, tiposMovimiento]);
 
@@ -259,6 +309,32 @@ const PlanillaForm = () => {
     };
 
     const onSubmit = async (data) => {
+        // Validation: Deviation Rate
+        // Logic: Checks enabled, reference exists, creating new (or strict edit), and user is NOT a Manager/Admin.
+        const isManager = ['admin', 'gerente'].includes(user?.role?.toLowerCase());
+
+        if (!isManager && deviationConfig.habilitado && lastCotizacionRef && !isEditMode && data.cotizacion) {
+            const currentCot = Number(data.cotizacion);
+            const refCot = Number(lastCotizacionRef);
+
+            if (currentCot > 0 && refCot > 0) {
+                const diff = Math.abs(currentCot - refCot);
+                const percentageDiff = (diff / refCot) * 100;
+
+                if (percentageDiff > deviationConfig.valor) {
+                    await Swal.fire({
+                        title: 'Diferencia de Precio Excesiva',
+                        text: `La cotización ingresada varía un ${percentageDiff.toFixed(2)}% respecto a la referencia (${refCot}). El límite permitido es ${deviationConfig.valor}%. Solicite autorización a un Gerente.`,
+                        icon: 'error',
+                        confirmButtonText: 'Corregir Precio',
+                        confirmButtonColor: '#d33',
+                        allowOutsideClick: false
+                    });
+                    return; // STRICT BLOCK
+                }
+            }
+        }
+
         try {
             if (isEditMode) {
                 await planillaService.update(id, {
@@ -291,7 +367,7 @@ const PlanillaForm = () => {
                     timer: 1500
                 });
             }
-            navigate('/planillas');
+            navigate('/planillas', { state: { selectedDate: data.fecha_operacion } });
         } catch (error) {
             console.error('Error saving:', error);
             // Optimistic Stock Error Handling
@@ -311,7 +387,46 @@ const PlanillaForm = () => {
         }
     };
 
-    const totalConversion = (Number(monto || 0) * Number(cotizacion || 0)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const handleAutoClassify = async () => {
+        const text = watch('observaciones');
+        if (!text) return;
+
+        setIsClassifying(true);
+        try {
+            const result = await aiService.classify(text);
+
+            if (result.operacionId) setValue('operacionId', result.operacionId);
+            // Wait a tick for cascade? Or set directly?
+            // If we set operacionId, the effect clears downstream. We might need to wait or handle it carefully.
+            // The effect runs on 'selectedOperacionId' change. 
+            // If we set both rapidly, pure React state might batch them, but the effect dependency on selectedOperacionId might clear tipoMovimientoId.
+            // Safe approach: Set Operacion, wait, set Tipo.
+            // OR: The classification provides both so we know they are valid.
+            // Let's set them. The effect clears if 'selectedOperacionId' changes. 
+            // If we set `operacionId` state (via setValue), the effect triggers. 
+            // The effect says: `if (!isEditMode) setValue('tipoMovimientoId', '')`.
+            // So if we set `tipoMovimientoId` here, the effect will wipe it out immediately after.
+            // WORKAROUND: We need to bypass that wipe, or wait for it.
+            // Hacky but simple: Set operacion, wait 100ms, set type.
+
+            if (result.operacionId) {
+                setValue('operacionId', result.operacionId);
+                setTimeout(() => {
+                    if (result.tipoMovimientoId) setValue('tipoMovimientoId', result.tipoMovimientoId);
+                }, 200);
+            }
+
+            if (result.suggestedObservation) {
+                setValue('observaciones', result.suggestedObservation);
+            }
+        } catch (error) {
+            console.error("Auto Classify Failed", error);
+        } finally {
+            setIsClassifying(false);
+        }
+    };
+
+    const totalConversion = (Number(monto || 0) * Number(cotizacion || 0)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 
     if (isLoading) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
@@ -321,7 +436,7 @@ const PlanillaForm = () => {
         <Container maxWidth="sm">
             <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <Button startIcon={<ArrowBack />} onClick={() => navigate('/planillas')} sx={{ mr: 2 }}>
+                    <Button startIcon={<ArrowBack />} onClick={() => navigate('/planillas', { state: { selectedDate: watch('fecha_operacion') } })} sx={{ mr: 2 }}>
                         Volver
                     </Button>
                     <Typography variant="h5" component="h1">
@@ -339,7 +454,7 @@ const PlanillaForm = () => {
                     <Grid container spacing={3} direction="column">
 
                         {/* 1. FECHA */}
-                        <Grid xs={12}>
+                        <Grid size={12}>
                             <Controller
                                 name="fecha_operacion"
                                 control={control}
@@ -359,7 +474,7 @@ const PlanillaForm = () => {
                         </Grid>
 
                         {/* 2. OPERACION (FILTRO) */}
-                        <Grid xs={12}>
+                        <Grid size={12}>
                             <FormControl fullWidth error={!!errors.operacionId}>
                                 <InputLabel>Operación</InputLabel>
                                 <Controller
@@ -383,7 +498,7 @@ const PlanillaForm = () => {
                         </Grid>
 
                         {/* 3. TIPO MOVIMIENTO (CASCADA) */}
-                        <Grid xs={12}>
+                        <Grid size={12}>
                             <FormControl fullWidth error={!!errors.tipoMovimientoId}>
                                 <InputLabel>Movimiento</InputLabel>
                                 <Controller
@@ -412,7 +527,7 @@ const PlanillaForm = () => {
 
 
                         {/* 4. MONEDA (CASCADA) */}
-                        <Grid xs={12}>
+                        <Grid size={12}>
                             <FormControl fullWidth error={!!errors.monedaId}>
                                 <InputLabel>Moneda</InputLabel>
                                 <Controller
@@ -439,7 +554,7 @@ const PlanillaForm = () => {
 
                         {/* LINEA 2: VALORES */}
 
-                        <Grid xs={12}>
+                        <Grid size={12}>
                             <Controller
                                 name="monto"
                                 control={control}
@@ -454,7 +569,7 @@ const PlanillaForm = () => {
                                         }}
                                         thousandSeparator="."
                                         decimalSeparator=","
-                                        decimalScale={4}
+                                        decimalScale={6}
                                         fixedDecimalScale={true}
                                         fullWidth
                                         disabled={isEditMode}
@@ -468,7 +583,7 @@ const PlanillaForm = () => {
 
                         {/* COTIZACION (CONDICIONAL) */}
                         {(!selectedTipoMov || selectedTipoMov.requiere_cotizacion || isEditMode) && (
-                            <Grid xs={12}>
+                            <Grid size={12}>
                                 <Controller
                                     name="cotizacion"
                                     control={control}
@@ -478,26 +593,32 @@ const PlanillaForm = () => {
                                         min: { value: 0.0001, message: 'Cotización debe ser mayor a 0' }
                                     }}
                                     render={({ field: { onChange, name, value, ref } }) => (
-                                        <NumericFormat
-                                            customInput={TextField}
-                                            label="Cotización"
-                                            value={value}
-                                            onValueChange={(values) => {
-                                                onChange(values.value);
-                                            }}
-                                            thousandSeparator="."
-                                            decimalSeparator=","
-                                            decimalScale={4}
-                                            fixedDecimalScale={true}
-                                            fullWidth
-                                            disabled={isEditMode || (selectedTipoMov && !selectedTipoMov.requiere_cotizacion)}
-                                            error={!!errors.cotizacion}
-                                            helperText={errors.cotizacion?.message}
-                                            getInputRef={ref}
-                                            sx={{
-                                                display: (selectedTipoMov && !selectedTipoMov.requiere_cotizacion && !value) ? 'none' : 'block'
-                                            }}
-                                        />
+                                        <>
+                                            <NumericFormat
+                                                customInput={TextField}
+                                                label="Cotización"
+                                                value={value}
+                                                onValueChange={(values) => {
+                                                    onChange(values.value);
+                                                }}
+                                                thousandSeparator="."
+                                                decimalSeparator=","
+                                                decimalScale={6}
+                                                fixedDecimalScale={true}
+                                                fullWidth
+                                                disabled={isEditMode || (selectedTipoMov && !selectedTipoMov.requiere_cotizacion)}
+                                                error={!!errors.cotizacion}
+                                                helperText={errors.cotizacion?.message}
+                                                getInputRef={ref}
+                                                sx={{
+                                                    display: (selectedTipoMov && !selectedTipoMov.requiere_cotizacion && !value) ? 'none' : 'block'
+                                                }}
+                                                InputProps={{
+                                                    endAdornment: checkingAI && <CircularProgress size={20} color="warning" />
+                                                }}
+                                            />
+                                            {checkingAI && <FormHelperText sx={{ color: 'warning.main' }}>IA analizando cotización...</FormHelperText>}
+                                        </>
                                     )}
                                 />
                             </Grid>
@@ -505,16 +626,42 @@ const PlanillaForm = () => {
 
                         {/* UX: CALCULADORA EN TIEMPO REAL (Solo si requiere cotización) */}
                         {selectedTipoMov?.requiere_cotizacion && (
-                            <Grid xs={12}>
+                            <Grid size={12}>
                                 <Card variant="outlined" sx={{ bgcolor: 'action.hover', width: '100%' }}>
-                                    <CardContent sx={{ p: '10px !important', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary">Total Conversión</Typography>
-                                            <Typography variant="h6" color="primary.main" fontWeight="bold">
-                                                $ {totalConversion}
+                                    <CardContent sx={{ p: '16px !important' }}>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                            <Typography variant="caption" color="text.secondary">
+                                                Total Conversión (Editar para calcular cotización)
                                             </Typography>
+                                            <NumericFormat
+                                                customInput={TextField}
+                                                variant="standard"
+                                                placeholder="Ingrese total para calcular cotización..."
+                                                value={monto && cotizacion ? (monto * cotizacion) : ''}
+                                                onValueChange={(values) => {
+                                                    const newTotal = values.floatValue;
+                                                    const currentMonto = Number(watch('monto'));
+
+                                                    // Only calculate if we have a valid Monto and the user is explicitly changing the Total
+                                                    // We use a small threshold check or focus check implicitly by user interaction
+                                                    if (currentMonto > 0 && newTotal !== undefined) {
+                                                        const calculatedCoti = newTotal / currentMonto;
+                                                        // Update cotizacion with 4 decimals logic
+                                                        setValue('cotizacion', calculatedCoti, { shouldDirty: true });
+                                                    }
+                                                }}
+                                                thousandSeparator="."
+                                                decimalSeparator=","
+                                                decimalScale={6}
+                                                fixedDecimalScale={true}
+                                                InputProps={{
+                                                    startAdornment: <Typography variant="h6" color="primary.main" sx={{ mr: 1 }}>$</Typography>,
+                                                    disableUnderline: true,
+                                                    sx: { fontSize: '1.25rem', fontWeight: 'bold', color: 'primary.main' }
+                                                }}
+                                                fullWidth
+                                            />
                                         </Box>
-                                        <CalculateIcon color="disabled" />
                                     </CardContent>
                                 </Card>
                             </Grid>
@@ -522,7 +669,7 @@ const PlanillaForm = () => {
 
                         {/* CLIENTE (CONDICIONAL - Show/Hide based on requiere_persona) */}
                         {(selectedTipoMov?.requiere_persona || isEditMode) && (
-                            <Grid xs={12}>
+                            <Grid size={12}>
                                 <FormControl fullWidth error={!!errors.clienteId}>
                                     {/* Removed InputLabel here because Autocomplete handles it inside TextField */}
                                     <Controller
@@ -571,7 +718,7 @@ const PlanillaForm = () => {
 
                         {/* OBSERVACIONES (CONDICIONAL - Show/Hide based on lleva_observacion) */}
                         {(selectedTipoMov?.lleva_observacion || isEditMode) && (
-                            <Grid xs={12}>
+                            <Grid size={12}>
                                 <Controller
                                     name="observaciones"
                                     control={control}
@@ -587,6 +734,22 @@ const PlanillaForm = () => {
                                             fullWidth
                                             error={!!errors.observaciones}
                                             helperText={errors.observaciones?.message}
+                                            InputProps={{
+                                                endAdornment: (aiEnabled && !isEditMode) && (
+                                                    <Box sx={{ display: 'flex', alignItems: 'flex-end', height: '100%', pb: 1 }}>
+                                                        <Button
+                                                            size="small"
+                                                            startIcon={isClassifying ? <CircularProgress size={16} /> : <AutoFixHighIcon />}
+                                                            onClick={handleAutoClassify}
+                                                            disabled={isClassifying || !watch('observaciones')}
+                                                            title="Autocompletar con IA"
+                                                            sx={{ minWidth: 'auto', px: 1 }}
+                                                        >
+                                                            {/* Magic! */}
+                                                        </Button>
+                                                    </Box>
+                                                )
+                                            }}
                                         />
                                     )}
                                 />
@@ -594,7 +757,7 @@ const PlanillaForm = () => {
                         )}
 
                         <Grid xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                            <Button variant="outlined" onClick={() => navigate('/planillas')}>
+                            <Button variant="outlined" onClick={() => navigate('/planillas', { state: { selectedDate: watch('fecha_operacion') } })}>
                                 Cancelar
                             </Button>
                             <Button variant="contained" type="submit" startIcon={<Save />} size="large">

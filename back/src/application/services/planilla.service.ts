@@ -75,4 +75,105 @@ export class PlanillaService {
 
         return lastOp?.cotizacion_aplicada || 0;
     }
+    async getRateEvolution(days: number = 30, monedaId?: number): Promise<any[]> {
+        const targetMoneda = monedaId || 2;
+
+        // Calculate start date
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+
+        const result = await PlanillaRepository.createQueryBuilder("p")
+            .select("p.fecha_operacion", "fecha")
+            .addSelect("AVG(p.cotizacion_aplicada)", "promedio")
+            .where("p.fecha_operacion >= :startDate", { startDate })
+            .andWhere("p.cotizacion_aplicada > 0")
+            .andWhere(new Brackets(qb => {
+                qb.where("p.moneda_ingreso_id = :mid", { mid: targetMoneda })
+                    .orWhere("p.moneda_egreso_id = :mid", { mid: targetMoneda });
+            }))
+            .groupBy("p.fecha_operacion")
+            .orderBy("p.fecha_operacion", "ASC")
+            .getRawMany();
+
+        return result.map(r => ({
+            fecha: typeof r.fecha === 'string' ? r.fecha.split('T')[0] : r.fecha,
+            valor: Number(Number(r.promedio).toFixed(2))
+        }));
+    }
+
+    async getHistoricalBalances(dateInput: string | Date): Promise<any[]> {
+        // Fix Date Parsing: "YYYY-MM-DD" is parsed as UTC, shifting to previous day in GMT-3.
+        // We manually parse string to ensure we get Local Time End-of-Day.
+        let date: Date;
+        if (typeof dateInput === 'string' && dateInput.includes('-')) {
+            const [y, m, d] = dateInput.split('T')[0].split('-').map(Number);
+            date = new Date(y, m - 1, d, 23, 59, 59, 999);
+        } else {
+            date = new Date(dateInput);
+            date.setHours(23, 59, 59, 999);
+        }
+
+        console.log("Health Check - Calculating Balance for Date:", date);
+        console.log("Input was:", dateInput);
+
+        // 1. Sum Incomes per Currency
+        const incomes = await PlanillaRepository.createQueryBuilder("p")
+            .leftJoin("p.moneda_ingreso", "mi")
+            .select("mi.id", "monedaId")
+            .addSelect("SUM(p.monto_ingreso)", "total")
+            .where("p.fecha_operacion <= :date", { date })
+            .andWhere("(p.impacta_stock = :impacta OR p.impacta_stock IS NULL)", { impacta: true })
+            .andWhere("p.moneda_ingreso IS NOT NULL")
+            .andWhere("p.deleted_at IS NULL")
+            .groupBy("mi.id")
+            .getRawMany();
+
+        console.log("Incomes Raw:", incomes);
+
+        // 2. Sum Outcomes per Currency
+        const outcomes = await PlanillaRepository.createQueryBuilder("p")
+            .leftJoin("p.moneda_egreso", "me")
+            .select("me.id", "monedaId")
+            .addSelect("SUM(p.monto_egreso)", "total")
+            .where("p.fecha_operacion <= :date", { date })
+            .andWhere("(p.impacta_stock = :impacta OR p.impacta_stock IS NULL)", { impacta: true })
+            .andWhere("p.moneda_egreso IS NOT NULL")
+            .andWhere("p.deleted_at IS NULL")
+            .groupBy("me.id")
+            .getRawMany();
+
+        // 3. Merge and Calculate Net
+        const balanceMap = new Map<number, number>();
+
+        incomes.forEach(i => {
+            const mid = Number(i.monedaId);
+            const val = parseFloat(i.total || '0');
+            balanceMap.set(mid, (balanceMap.get(mid) || 0) + val);
+        });
+
+        outcomes.forEach(o => {
+            const mid = Number(o.monedaId);
+            const val = parseFloat(o.total || '0');
+            balanceMap.set(mid, (balanceMap.get(mid) || 0) - val);
+        });
+
+        // 4. Enrich with Currency Data
+        const result = [];
+        for (const [monedaId, saldo] of balanceMap.entries()) {
+            const moneda = await MonedaRepository.findOneBy({ id: monedaId });
+            if (moneda) {
+                result.push({
+                    moneda: {
+                        id: moneda.id,
+                        nombre: moneda.nombre,
+                        codigo: moneda.codigo,
+                        es_nacional: moneda.es_nacional
+                    },
+                    saldo: Number(saldo.toFixed(2)) // Round to 2 decimals
+                });
+            }
+        }
+
+        return result;
+    }
 }

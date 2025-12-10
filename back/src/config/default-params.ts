@@ -1,16 +1,16 @@
-export const DEFAULT_PARAMS: Record<string, any> = {
-    // Colors for Operation Grid
-    "COLORESOPERACIONES": {
+export const DEFAULT_PARAMS: { [key: string]: any } = {
+    // ... other params ...
+    COLORESOPERACIONES: {
         "themeConfig": {
             "ENTRADA": {
                 "textColor": "#1565c0",
                 "rowColor": "#e3f2fd",
-                "descripcion": "Entradas. Fila Azul suave."
+                "descripcion": "Entradas. Texto Azul, Fila Azul suave."
             },
             "SALIDA": {
                 "textColor": "#c62828",
                 "rowColor": "#ffebee",
-                "descripcion": "Salidas. Fila Rojo suave."
+                "descripcion": "Salidas. Texto Rojo, Fila Rojo suave."
             },
             "COMPRA": {
                 "textColor": "#1565c0",
@@ -29,13 +29,11 @@ export const DEFAULT_PARAMS: Record<string, any> = {
             }
         }
     },
+    CONTROLSALDO: "true",
+    EDITARPLANILLAFECHAANTERIOR: 0,
+    SEGURIDADGOOGLE: "false",
+    CONTROLPORIA: "false",
+    TASADESVICION: { "habilitado": true, "valor": 1.5 }
 
-    // Balance Control enabled/disabled
-    "CONTROLSALDO": false,
 
-    // Restrictions on editing/anulling past transactions
-    "EDITARPLANILLAFECHAANTERIOR": {
-        "habilitado": true,
-        "dias": 0
-    }
 };

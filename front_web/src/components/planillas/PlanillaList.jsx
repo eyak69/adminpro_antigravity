@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { DataGrid, GridToolbar } from '@mui/x-data-grid';
+import { DataGrid, GridToolbar, useGridApiContext } from '@mui/x-data-grid';
 import { Button, Container, Typography, Box, Grid } from '@mui/material';
 import Add from '@mui/icons-material/Add';
 import Block from '@mui/icons-material/Block'; // Block icon for 'Anular'
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import planillaService from '../../services/planilla.service';
 import Swal from 'sweetalert2';
 import { useTheme } from '@mui/material/styles';
@@ -11,8 +11,33 @@ import { useParametros } from '../../context/ParametrosContext';
 import axios from 'axios';
 import config from '../../config'; // Adjust path if needed
 import { StockCard, VipStockCard } from '../stock';
+import DailyBalanceCard from './DailyBalanceCard'; // New Component
 
 import MagicInput from './MagicInput';
+
+const CustomToolbar = ({ rows }) => {
+    const apiRef = useGridApiContext();
+
+    useEffect(() => {
+        if (rows && rows.length > 0) {
+            // Wait for render
+            const timer = setTimeout(() => {
+                try {
+                    apiRef.current.autosizeColumns({
+                        includeHeaders: true,
+                        includeOutliers: true,
+                        expand: false, // Fit content exactly like double-click
+                    });
+                } catch (e) {
+                    console.error("Autosize failed", e);
+                }
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [rows, apiRef]);
+
+    return <GridToolbar />;
+};
 
 const PlanillaList = () => {
     const [planillas, setPlanillas] = useState([]);
@@ -25,8 +50,9 @@ const PlanillaList = () => {
         return `${year}-${month}-${day}`;
     };
 
-    const [selectedDate, setSelectedDate] = useState(getTodayString());
+    const location = useLocation();
     const navigate = useNavigate();
+    const [selectedDate, setSelectedDate] = useState(location.state?.selectedDate || getTodayString());
     const theme = useTheme();
     const { parametros, getCellColor, getRowThemeClass } = useParametros() || {};
     const [editConfig, setEditConfig] = useState({ habilitado: true, dias: 0 });
@@ -117,7 +143,13 @@ const PlanillaList = () => {
             if (result.isConfirmed) {
                 try {
                     await planillaService.remove(id);
-                    Swal.fire('Anulada!', 'La transacción ha sido anulada.', 'success');
+                    Swal.fire({
+                        title: 'Anulada!',
+                        text: 'La transacción ha sido anulada.',
+                        icon: 'success',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
                     loadPlanillas();
                 } catch (error) {
                     console.error('Error al anular:', error);
@@ -132,7 +164,7 @@ const PlanillaList = () => {
         {
             field: 'fecha_operacion',
             headerName: 'Fecha',
-            width: 150,
+            width: 100,
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row) || {};
                 const val = actualRow.fecha_operacion || actualRow.created_at || value;
@@ -166,7 +198,8 @@ const PlanillaList = () => {
         {
             field: 'tipo_movimiento',
             headerName: 'Tipo Movimiento',
-            width: 180,
+            width: 220,
+            minWidth: 220,
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row);
                 if (!actualRow) return '';
@@ -180,7 +213,7 @@ const PlanillaList = () => {
         {
             field: 'tipo_accion',
             headerName: 'Acción',
-            width: 130,
+            width: 100,
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row);
                 return actualRow?.tipo_movimiento?.tipo_accion || '-';
@@ -189,7 +222,7 @@ const PlanillaList = () => {
         {
             field: 'contabilizacion',
             headerName: 'Contabilización',
-            width: 130,
+            width: 110,
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row);
                 return actualRow?.tipo_movimiento?.contabilizacion || '-';
@@ -198,7 +231,7 @@ const PlanillaList = () => {
         {
             field: 'cliente',
             headerName: 'Cliente',
-            width: 180,
+            width: 150,
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row);
                 if (!actualRow) return '-';
@@ -215,7 +248,7 @@ const PlanillaList = () => {
         {
             field: 'monedas',
             headerName: 'Monedas',
-            width: 120,
+            width: 100,
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row);
                 if (!actualRow) return '-';
@@ -234,14 +267,18 @@ const PlanillaList = () => {
         {
             field: 'ingreso',
             headerName: 'Ingreso',
-            width: 200,
+            width: 160,
+            minWidth: 160,
+            align: 'right',
+            headerAlign: 'right',
             renderCell: (params) => {
                 const colorKey = params.row.moneda_ingreso?.es_nacional ? 'ENTRADA' : 'COMPRA';
                 return (
-                    <Box>
+                    <Box sx={{ width: '100%', textAlign: 'right' }}>
                         {(params.row.monto_ingreso > 0 && params.row.moneda_ingreso) ? (
                             <Typography variant="body2" sx={{ fontWeight: 'bold', color: getCellColor(colorKey) }}>
-                                {params.row.moneda_ingreso.codigo} {Number(params.row.monto_ingreso).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {/* dbg: {colorKey} -> {getCellColor(colorKey)} */}
+                                {Number(params.row.monto_ingreso).toLocaleString('es-AR', { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                             </Typography>
                         ) : '-'}
                     </Box>
@@ -251,14 +288,17 @@ const PlanillaList = () => {
         {
             field: 'egreso',
             headerName: 'Egreso',
-            width: 200,
+            width: 160,
+            minWidth: 160,
+            align: 'right',
+            headerAlign: 'right',
             renderCell: (params) => {
                 const colorKey = params.row.moneda_egreso?.es_nacional ? 'SALIDA' : 'VENTA';
                 return (
-                    <Box>
+                    <Box sx={{ width: '100%', textAlign: 'right' }}>
                         {(params.row.monto_egreso > 0 && params.row.moneda_egreso) ? (
                             <Typography variant="body2" sx={{ fontWeight: 'bold', color: getCellColor(colorKey) }}>
-                                {params.row.moneda_egreso.codigo} {Number(params.row.monto_egreso).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {Number(params.row.monto_egreso).toLocaleString('es-AR', { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                             </Typography>
                         ) : '-'}
                     </Box>
@@ -269,7 +309,8 @@ const PlanillaList = () => {
         {
             field: 'observaciones',
             headerName: 'Observaciones',
-            width: 250,
+            width: 280,
+            minWidth: 280,
             valueGetter: (value, row) => {
                 const actualRow = row || (value && value.row);
                 if (!actualRow) return '';
@@ -277,7 +318,7 @@ const PlanillaList = () => {
                 if (actualRow.observaciones) return actualRow.observaciones;
 
                 if (actualRow.cotizacion_aplicada) {
-                    return `Cotización = ${actualRow.cotizacion_aplicada}`;
+                    return `Cotización = ${Number(actualRow.cotizacion_aplicada).toLocaleString('es-AR', { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`;
                 }
                 return '';
             }
@@ -285,7 +326,7 @@ const PlanillaList = () => {
         {
             field: 'actions',
             headerName: 'Acciones',
-            width: 200,
+            width: 120,
             renderCell: (params) => {
                 const isAnulada = params.row.deleted_at != null;
                 return (
@@ -310,7 +351,7 @@ const PlanillaList = () => {
     ];
 
     return (
-        <Container maxWidth="xl">
+        <Container maxWidth={false}>
             {/* Magic Input */}
             <Box sx={{ mt: 3 }}>
                 <MagicInput />
@@ -343,17 +384,19 @@ const PlanillaList = () => {
                     </Button>
                 </Box>
             </Box>
-            <Box sx={{ height: 600, width: '100%' }}>
+            <Box sx={{ height: 'calc(100vh - 300px)', minHeight: 500, width: '100%' }}>
                 <DataGrid
                     rows={planillas}
                     columns={columns}
-                    pageSize={10}
-                    rowsPerPageOptions={[10, 25, 50]}
+                    autoPageSize
+                    rowsPerPageOptions={[10, 25, 50, 100]}
                     disableSelectionOnClick
-                    slots={{ toolbar: GridToolbar }}
+
+                    slots={{ toolbar: CustomToolbar }}
                     slotProps={{
                         toolbar: {
                             showQuickFilter: true,
+                            rows: planillas, // Pass rows to trigger effect
                         },
                     }}
                     getRowClassName={(params) => {
@@ -381,11 +424,14 @@ const PlanillaList = () => {
 
             {/* Stock and VIP Cards */}
             <Grid container spacing={3} sx={{ mt: 2, mb: 4 }}>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                     <StockCard refreshTrigger={planillas} />
                 </Grid>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                     <VipStockCard refreshTrigger={planillas} />
+                </Grid>
+                <Grid size={{ xs: 12 }}>
+                    <DailyBalanceCard selectedDate={selectedDate} refreshTrigger={planillas} />
                 </Grid>
             </Grid>
         </Container>

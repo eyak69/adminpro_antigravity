@@ -19,6 +19,6 @@ export class StockCaja extends AuditableEntity {
     @JoinColumn({ name: "moneda_id" })
     moneda!: Moneda;
 
-    @Column({ type: "decimal", precision: 18, scale: 4 })
+    @Column({ type: "decimal", precision: 18, scale: 6 })
     saldo_actual!: number;
 }

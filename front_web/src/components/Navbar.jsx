@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { AppBar, Toolbar, IconButton, Typography, Box, Avatar, Badge, Menu, MenuItem, ListItemText, ListItemIcon, Divider } from '@mui/material';
+import { AppBar, Toolbar, IconButton, Typography, Box, Avatar, Badge, Menu, MenuItem, ListItemText, ListItemIcon, Divider, Tooltip } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 import MenuIcon from '@mui/icons-material/Menu';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import SearchIcon from '@mui/icons-material/Search';
@@ -7,11 +8,21 @@ import InfoIcon from '@mui/icons-material/Info';
 import ErrorIcon from '@mui/icons-material/Error';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { useNotification } from '../context/NotificationContext';
 
-const Navbar = ({ onSidebarOpen }) => {
+import MenuOpenIcon from '@mui/icons-material/MenuOpen';
+
+const Navbar = ({ onSidebarOpen, onToggleCollapse, isSidebarCollapsed }) => {
+    const { user, logout } = useAuth();
     const { unreadCount, notifications, clearNotifications } = useNotification();
     const [anchorEl, setAnchorEl] = useState(null);
+    const [anchorElUser, setAnchorElUser] = useState(null);
+
+    const handleLogout = () => {
+        setAnchorElUser(null);
+        logout();
+    };
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -42,6 +53,15 @@ const Navbar = ({ onSidebarOpen }) => {
                     sx={{ mr: 2, display: { lg: 'none' } }}
                 >
                     <MenuIcon />
+                </IconButton>
+
+                <IconButton
+                    color="inherit"
+                    edge="start"
+                    onClick={onToggleCollapse}
+                    sx={{ mr: 2, display: { xs: 'none', lg: 'inline-flex' } }}
+                >
+                    {isSidebarCollapsed ? <MenuIcon /> : <MenuOpenIcon />}
                 </IconButton>
 
                 <Box sx={{ flexGrow: 1 }} />
@@ -100,17 +120,76 @@ const Navbar = ({ onSidebarOpen }) => {
                         )}
                     </Menu>
 
-                    <Avatar
-                        sx={{
-                            width: 40,
-                            height: 40,
-                            cursor: 'pointer',
-                            bgcolor: 'primary.main'
+                    <Tooltip title="Abrir ajustes">
+                        <IconButton onClick={(e) => setAnchorElUser(e.currentTarget)} sx={{ p: 0 }}>
+                            <Avatar
+                                src={user?.picture}
+                                sx={{
+                                    width: 40,
+                                    height: 40,
+                                    border: '2px solid',
+                                    borderColor: 'primary.main'
+                                }}
+                                alt={user?.name || 'User Profile'}
+                            >
+                                {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                            </Avatar>
+                        </IconButton>
+                    </Tooltip>
+
+                    <Menu
+                        sx={{ mt: '45px' }}
+                        id="menu-appbar"
+                        anchorEl={anchorElUser}
+                        anchorOrigin={{
+                            vertical: 'top',
+                            horizontal: 'right',
                         }}
-                        alt="User Profile"
+                        keepMounted
+                        transformOrigin={{
+                            vertical: 'top',
+                            horizontal: 'right',
+                        }}
+                        open={Boolean(anchorElUser)}
+                        onClose={() => setAnchorElUser(null)}
+                        PaperProps={{
+                            elevation: 0,
+                            sx: {
+                                overflow: 'visible',
+                                filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
+                                mt: 1.5,
+                                minWidth: 200,
+                                '&:before': {
+                                    content: '""',
+                                    display: 'block',
+                                    position: 'absolute',
+                                    top: 0,
+                                    right: 14,
+                                    width: 10,
+                                    height: 10,
+                                    bgcolor: 'background.paper',
+                                    transform: 'translateY(-50%) rotate(45deg)',
+                                    zIndex: 0,
+                                },
+                            },
+                        }}
                     >
-                        U
-                    </Avatar>
+                        <Box sx={{ px: 2, py: 1 }}>
+                            <Typography variant="subtitle1" noWrap sx={{ fontWeight: 'bold' }}>
+                                {user?.name || 'Usuario'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" noWrap>
+                                {user?.email || ''}
+                            </Typography>
+                        </Box>
+                        <Divider />
+                        <MenuItem onClick={handleLogout}>
+                            <ListItemIcon>
+                                <LogoutIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText>Cerrar Sesión</ListItemText>
+                        </MenuItem>
+                    </Menu>
                 </Box>
             </Toolbar>
         </AppBar>

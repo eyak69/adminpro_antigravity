@@ -25,19 +25,21 @@ const ClienteForm = ({ open, onClose, onSubmit, initialData }) => {
     });
 
     useEffect(() => {
-        if (initialData) {
-            reset(initialData);
-        } else {
-            reset({
-                alias: '',
-                nombre_real: '',
-                documento: '',
-                notas: '',
-                es_moroso: false,
-                es_vip: false,
-            });
+        if (open) {
+            if (initialData) {
+                reset(initialData);
+            } else {
+                reset({
+                    alias: '',
+                    nombre_real: '',
+                    documento: '',
+                    notas: '',
+                    es_moroso: false,
+                    es_vip: false,
+                });
+            }
         }
-    }, [initialData, reset]);
+    }, [initialData, reset, open]);
 
     const handleFormSubmit = (data) => {
         onSubmit(data);
@@ -52,13 +54,10 @@ const ClienteForm = ({ open, onClose, onSubmit, initialData }) => {
                         <Controller
                             name="alias"
                             control={control}
-                            rules={{ required: 'El alias es requerido' }}
-                            render={({ field, fieldState: { error } }) => (
+                            render={({ field }) => (
                                 <TextField
                                     {...field}
                                     label="Alias"
-                                    error={!!error}
-                                    helperText={error ? error.message : ''}
                                     fullWidth
                                 />
                             )}

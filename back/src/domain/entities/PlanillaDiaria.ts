@@ -1,10 +1,11 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn } from "typeorm";
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn, Index } from "typeorm";
 import { AuditableEntity } from "./AuditableEntity";
 import { TipoMovimiento } from "./TipoMovimiento";
 import { Cliente } from "./Cliente";
 import { Moneda } from "./Moneda";
 
 @Entity("planilla_diaria")
+@Index("IDX_BALANCE_CALC", ["fecha_operacion", "impacta_stock", "deleted_at"])
 export class PlanillaDiaria extends AuditableEntity {
     @PrimaryGeneratedColumn()
     id!: number;
@@ -25,13 +26,13 @@ export class PlanillaDiaria extends AuditableEntity {
     @ManyToOne(() => Moneda, { nullable: true })
     moneda_ingreso!: Moneda | null;
 
-    @Column({ type: "decimal", precision: 18, scale: 4, default: 0 })
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
     monto_ingreso!: number;
 
     @ManyToOne(() => Moneda, { nullable: true })
     moneda_egreso!: Moneda | null;
 
-    @Column({ type: "decimal", precision: 18, scale: 4, default: 0 })
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
     monto_egreso!: number;
 
     // Datos Financieros
