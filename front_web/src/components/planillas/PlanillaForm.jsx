@@ -229,9 +229,9 @@ const PlanillaForm = () => {
                 }
             }
 
-            // Filter only VIP Clients for selection
-            const vipClientes = clientesData.filter(c => c.es_vip);
-            setClientes(vipClientes);
+            // Filter only VIP Clients for selection -> REMOVED by user request
+            // const vipClientes = clientesData.filter(c => c.es_vip);
+            setClientes(clientesData);
 
             setMonedas(monedasData);
             setIsLoading(false);

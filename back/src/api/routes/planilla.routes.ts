@@ -8,6 +8,7 @@ router.get("/balance", planillaController.getBalance); // Must be before /:id
 router.get("/", planillaController.getAll);
 router.get("/rates", planillaController.getRates);
 router.get("/last-cotizacion/:monedaId", planillaController.getLastCotizacion);
+router.get("/day-balance", planillaController.getDayBalance);
 router.get("/:id", planillaController.getById);
 // router.post("/", (req, res) => controller.create(req, res)); // Disabled to enforce TransactionService
 router.put("/:id", planillaController.update);

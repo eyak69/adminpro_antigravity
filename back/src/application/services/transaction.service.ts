@@ -109,9 +109,11 @@ export class TransactionService {
                 throw new Error(`El movimiento ${tipoMov.nombre} requiere una observación obligatoria.`);
             }
 
-            // Determinar si impacta en stock (VIP o Anónimo = SI, No VIP = NO)
-            // Default: Si no hay cliente, impacta. Si hay cliente, depende del flag es_vip.
-            const impactaStock = !cliente || cliente.es_vip;
+            // Determinar si impacta en stock:
+            // 1. Si NO hay cliente (Anónimo) -> Impacta (True)
+            // 2. Si hay cliente PERO NO es VIP -> Impacta (True)
+            // 3. Si hay cliente Y es VIP -> NO Impacta (False) - User Request
+            const impactaStock = !cliente || !cliente.es_vip;
 
             // Determinar fecha de operación
             const fechaOperacion: any = dto.fecha_operacion;

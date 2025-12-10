@@ -12,6 +12,7 @@ import axios from 'axios';
 import config from '../../config'; // Adjust path if needed
 import { StockCard, VipStockCard } from '../stock';
 import DailyBalanceCard from './DailyBalanceCard'; // New Component
+import DailyMovementCard from './DailyMovementCard';
 
 import MagicInput from './MagicInput';
 
@@ -56,33 +57,36 @@ const PlanillaList = () => {
     const theme = useTheme();
     const { parametros, getCellColor, getRowThemeClass } = useParametros() || {};
     const [editConfig, setEditConfig] = useState({ habilitado: true, dias: 0 });
+    const [showDailyMovements, setShowDailyMovements] = useState(false);
 
     useEffect(() => {
-        loadEditConfig();
+        loadParams();
     }, []);
 
-    const loadEditConfig = async () => {
+    const loadParams = async () => {
         try {
-            const response = await axios.get(`${config.API_BASE_URL}/parametros/EDITARPLANILLAFECHAANTERIOR`);
-            if (response.data) {
-                // Ensure we parse if it's string, though usually axios parses JSON.
-                // The service returns the value field which might be stringified JSON or parsed object depending on backend service.
-                // Our backend param service returns JSON.parse(val) or val. So it should be an object.
-                const val = response.data.valor ? (typeof response.data.valor === 'string' ? JSON.parse(response.data.valor) : response.data.valor) : response.data;
-                // If the endpoint wraps it, extract. The standard endpoint usually returns the Parametro entity { clave, valor }.
-                // If we use the generic param service 'get' logic internally it returns value, but via API controller usually returns entity?
-                // Let's assume standard entity return { clave, valor: "..." } if using generic controller, OR value if specific.
-                // Wait, we don't have a param controller we viewed? 
-                // Let's assume we need to parse blindly or safe check.
-                // If response.data has 'valor', use it.
-                let finalVal = response.data.valor || response.data;
+            const [editResponse, viewResponse] = await Promise.all([
+                axios.get(`${config.API_BASE_URL}/parametros/EDITARPLANILLAFECHAANTERIOR`),
+                axios.get(`${config.API_BASE_URL}/parametros/VERSALDOSDIARIOS`).catch(() => ({ data: { valor: 'true' } })) // Default true if missing
+            ]);
+
+            // 1. Edit Config
+            if (editResponse.data) {
+                let finalVal = editResponse.data.valor || editResponse.data;
                 if (typeof finalVal === 'string') {
                     try { finalVal = JSON.parse(finalVal); } catch (e) { }
                 }
                 setEditConfig(finalVal || { habilitado: true, dias: 0 });
             }
+
+            // 2. View Config
+            if (viewResponse.data) {
+                const val = viewResponse.data.valor || viewResponse.data;
+                setShowDailyMovements(val === 'true' || val === true);
+            }
+
         } catch (error) {
-            console.error("Error fetching edit config", error);
+            console.error("Error fetching params", error);
         }
     };
 
@@ -424,15 +428,20 @@ const PlanillaList = () => {
 
             {/* Stock and VIP Cards */}
             <Grid container spacing={3} sx={{ mt: 2, mb: 4 }}>
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid item xs={12} md={6}>
                     <StockCard refreshTrigger={planillas} />
                 </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid item xs={12} md={6}>
                     <VipStockCard refreshTrigger={planillas} />
                 </Grid>
-                <Grid size={{ xs: 12 }}>
+                <Grid item xs={12}>
                     <DailyBalanceCard selectedDate={selectedDate} refreshTrigger={planillas} />
                 </Grid>
+                {showDailyMovements && (
+                    <Grid item xs={12}>
+                        <DailyMovementCard selectedDate={selectedDate} refreshTrigger={planillas} />
+                    </Grid>
+                )}
             </Grid>
         </Container>
     );

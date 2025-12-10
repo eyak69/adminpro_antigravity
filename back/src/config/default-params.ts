@@ -1,5 +1,8 @@
 export const DEFAULT_PARAMS: { [key: string]: any } = {
-    // ... other params ...
+    // Definimos los tipos de movimiento base si no existen
+    // Estos son defaults para inicializar, luego se pueden editar en BD si implementamos un editor.
+
+    // Configuración de Colores para Tipos de Movimiento (Visual)
     COLORESOPERACIONES: {
         "themeConfig": {
             "ENTRADA": {
@@ -33,7 +36,6 @@ export const DEFAULT_PARAMS: { [key: string]: any } = {
     EDITARPLANILLAFECHAANTERIOR: 0,
     SEGURIDADGOOGLE: "false",
     CONTROLPORIA: "false",
-    TASADESVICION: { "habilitado": true, "valor": 1.5 }
-
-
+    TASADESVICION: { "habilitado": true, "valor": 1.5 },
+    VERSALDOSDIARIOS: "true"
 };

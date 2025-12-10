@@ -88,4 +88,16 @@ export class PlanillaController {
             res.status(500).json({ message: "Error getting historical balance", error });
         }
     }
+    async getDayBalance(req: Request, res: Response) {
+        try {
+            const dateStr = req.query.date as string;
+            if (!dateStr) {
+                return res.status(400).json({ message: "Date query param is required" });
+            }
+            const balances = await planillaService.getDailyMovements(dateStr);
+            res.json(balances);
+        } catch (error) {
+            res.status(500).json({ message: "Error getting daily movements", error });
+        }
+    }
 }

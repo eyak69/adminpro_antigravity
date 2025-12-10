@@ -40,8 +40,20 @@ const getLastCotizacion = async (monedaId, tipoAccion) => {
     return response.data.cotizacion; // Access .cotizacion property from response object
 };
 
+const getRateEvolution = async (days = 30, monedaId = null) => {
+    const params = { days };
+    if (monedaId) params.monedaId = monedaId;
+    const response = await axios.get(`${API_URL}/rates`, { params });
+    return response.data;
+};
+
 const getDailyBalance = async (date) => {
-    const response = await axios.get(`${API_URL}/balance`, { params: { date } });
+    const response = await axios.get(`${API_URL}/balance?date=${date}`);
+    return response.data;
+};
+
+const getDailyMovements = async (date) => {
+    const response = await axios.get(`${API_URL}/day-balance?date=${date}`);
     return response.data;
 };
 
@@ -51,6 +63,8 @@ export default {
     create,
     update,
     remove,
+    getRateEvolution,
     getLastCotizacion,
     getDailyBalance,
+    getDailyMovements
 };

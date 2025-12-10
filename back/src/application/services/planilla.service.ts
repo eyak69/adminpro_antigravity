@@ -176,4 +176,80 @@ export class PlanillaService {
 
         return result;
     }
+
+    async getDailyMovements(dateInput: string | Date): Promise<any[]> {
+        // Calculate balance ONLY for the specific date (Non-cumulative)
+        let dateStart: Date;
+        let dateEnd: Date;
+
+        if (typeof dateInput === 'string' && dateInput.includes('-')) {
+            const [y, m, d] = dateInput.split('T')[0].split('-').map(Number);
+            dateStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+            dateEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+        } else {
+            const base = new Date(dateInput);
+            dateStart = new Date(base);
+            dateStart.setHours(0, 0, 0, 0);
+            dateEnd = new Date(base);
+            dateEnd.setHours(23, 59, 59, 999);
+        }
+
+        // 1. Incomes for Day
+        const incomes = await PlanillaRepository.createQueryBuilder("p")
+            .leftJoin("p.moneda_ingreso", "mi")
+            .select("mi.id", "monedaId")
+            .addSelect("SUM(p.monto_ingreso)", "total")
+            .where("p.fecha_operacion BETWEEN :start AND :end", { start: dateStart, end: dateEnd })
+            // .andWhere("(p.impacta_stock = :impacta OR p.impacta_stock IS NULL)", { impacta: true }) // SHOW ALL FOR TEST CARD
+            .andWhere("p.moneda_ingreso IS NOT NULL")
+            .andWhere("p.deleted_at IS NULL")
+            .groupBy("mi.id")
+            .getRawMany();
+
+        // 2. Outcomes for Day
+        const outcomes = await PlanillaRepository.createQueryBuilder("p")
+            .leftJoin("p.moneda_egreso", "me")
+            .select("me.id", "monedaId")
+            .addSelect("SUM(p.monto_egreso)", "total")
+            .where("p.fecha_operacion BETWEEN :start AND :end", { start: dateStart, end: dateEnd })
+            // .andWhere("(p.impacta_stock = :impacta OR p.impacta_stock IS NULL)", { impacta: true }) // SHOW ALL FOR TEST CARD
+            .andWhere("p.moneda_egreso IS NOT NULL")
+            .andWhere("p.deleted_at IS NULL")
+            .groupBy("me.id")
+            .getRawMany();
+
+        // 3. Merge
+        const balanceMap = new Map<number, number>();
+
+        incomes.forEach(i => {
+            const mid = Number(i.monedaId);
+            const val = parseFloat(i.total || '0');
+            balanceMap.set(mid, (balanceMap.get(mid) || 0) + val);
+        });
+
+        outcomes.forEach(o => {
+            const mid = Number(o.monedaId);
+            const val = parseFloat(o.total || '0');
+            balanceMap.set(mid, (balanceMap.get(mid) || 0) - val);
+        });
+
+        // 4. Enrich
+        const result = [];
+        for (const [monedaId, saldo] of balanceMap.entries()) {
+            const moneda = await MonedaRepository.findOneBy({ id: monedaId });
+            if (moneda) {
+                result.push({
+                    moneda: {
+                        id: moneda.id,
+                        nombre: moneda.nombre,
+                        codigo: moneda.codigo,
+                        es_nacional: moneda.es_nacional
+                    },
+                    saldo: Number(saldo.toFixed(2))
+                });
+            }
+        }
+
+        return result;
+    }
 }
