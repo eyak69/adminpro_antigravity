@@ -2,7 +2,16 @@ import React from 'react';
 import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Paper, Typography, Box } from '@mui/material';
 
+import { useParametros } from '../../context/ParametrosContext';
+
 const LineChart = ({ data, title }) => {
+    const { parametros } = useParametros() || {};
+    const themeConfig = parametros?.COLORESOPERACIONES?.themeConfig || {};
+
+    // Defaults matching valid hardcoded values if config is missing
+    const colorCompra = themeConfig.COMPRA?.textColor || "#1565c0";
+    const colorVenta = themeConfig.VENTA?.textColor || "#c62828";
+
     if (!data || data.length === 0) {
         return (
             <Paper sx={{ p: 2, height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -31,8 +40,8 @@ const LineChart = ({ data, title }) => {
                     <YAxis domain={['auto', 'auto']} />
                     <Tooltip />
                     <Legend />
-                    <Line type="monotone" dataKey="compra" stroke="#1565c0" name="Compra" activeDot={{ r: 8 }} />
-                    <Line type="monotone" dataKey="venta" stroke="#c62828" name="Venta" activeDot={{ r: 8 }} />
+                    <Line type="monotone" dataKey="compra" stroke={colorCompra} name="Compra" activeDot={{ r: 8 }} />
+                    <Line type="monotone" dataKey="venta" stroke={colorVenta} name="Venta" activeDot={{ r: 8 }} />
                 </RechartsLineChart>
             </ResponsiveContainer>
         </Paper>

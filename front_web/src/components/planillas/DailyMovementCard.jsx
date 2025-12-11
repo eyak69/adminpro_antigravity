@@ -82,7 +82,7 @@ const DailyMovementCard = ({ selectedDate, refreshTrigger }) => {
                                             color: item.saldo >= 0 ? 'success.main' : 'error.main'
                                         }}
                                     >
-                                        $ {item.saldo.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                        $ {item.saldo.toLocaleString('es-AR', { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                                     </Typography>
                                 </Paper>
                             </Grid>

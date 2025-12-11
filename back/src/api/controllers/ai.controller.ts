@@ -9,12 +9,12 @@ const aiService = new AiService();
 export class AiController {
     async parse(req: Request, res: Response) {
         try {
-            const { text } = req.body;
+            const { text, referenceDate } = req.body;
             if (!text) {
                 return res.status(400).json({ message: "Text is required" });
             }
 
-            const result = await aiService.parseTransaction(text);
+            const result = await aiService.parseTransaction(text, referenceDate);
             res.json(result);
         } catch (error) {
             console.error("AI Parse Error:", error);

@@ -76,29 +76,51 @@ export class PlanillaService {
         return lastOp?.cotizacion_aplicada || 0;
     }
     async getRateEvolution(days: number = 30, monedaId?: number): Promise<any[]> {
-        const targetMoneda = monedaId || 2;
+        const targetMoneda = monedaId || 1; // Default to USD (ID 1) if not specified
 
-        // Calculate start date
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+        // Calculate start date (Simple string YYYY-MM-DD)
+        const d = new Date();
+        d.setDate(d.getDate() - days);
+        const startDateStr = d.toISOString().split('T')[0];
+
+        console.log("DEBUG getRateEvolution:", { days, targetMoneda, startDateStr });
 
         const result = await PlanillaRepository.createQueryBuilder("p")
+            .leftJoin("p.moneda_ingreso", "mi")
+            .leftJoin("p.moneda_egreso", "me")
             .select("p.fecha_operacion", "fecha")
-            .addSelect("AVG(p.cotizacion_aplicada)", "promedio")
-            .where("p.fecha_operacion >= :startDate", { startDate })
+            // Compra: System receives USD (mi.id = target)
+            .addSelect("AVG(CASE WHEN mi.id = :mid THEN p.cotizacion_aplicada ELSE NULL END)", "promedio_compra")
+            // Venta: System sells USD (me.id = target)
+            .addSelect("AVG(CASE WHEN me.id = :mid THEN p.cotizacion_aplicada ELSE NULL END)", "promedio_venta")
+            .where("p.fecha_operacion >= :startDate", { startDate: startDateStr })
             .andWhere("p.cotizacion_aplicada > 0")
             .andWhere(new Brackets(qb => {
-                qb.where("p.moneda_ingreso_id = :mid", { mid: targetMoneda })
-                    .orWhere("p.moneda_egreso_id = :mid", { mid: targetMoneda });
+                qb.where("mi.id = :mid", { mid: targetMoneda })
+                    .orWhere("me.id = :mid", { mid: targetMoneda });
             }))
+            .setParameter("mid", targetMoneda)
             .groupBy("p.fecha_operacion")
             .orderBy("p.fecha_operacion", "ASC")
             .getRawMany();
 
-        return result.map(r => ({
-            fecha: typeof r.fecha === 'string' ? r.fecha.split('T')[0] : r.fecha,
-            valor: Number(Number(r.promedio).toFixed(2))
-        }));
+        console.log("DEBUG getRateEvolution RESULT:", result);
+
+        return result.map(r => {
+            // Ensure date is string YYYY-MM-DD
+            let dateStr = r.fecha;
+            if (r.fecha instanceof Date) {
+                dateStr = r.fecha.toISOString().split('T')[0];
+            } else if (typeof r.fecha === 'string' && r.fecha.includes('T')) {
+                dateStr = r.fecha.split('T')[0];
+            }
+
+            return {
+                fecha: dateStr,
+                compra: r.promedio_compra ? Number(Number(r.promedio_compra).toFixed(2)) : null,
+                venta: r.promedio_venta ? Number(Number(r.promedio_venta).toFixed(2)) : null
+            };
+        });
     }
 
     async getHistoricalBalances(dateInput: string | Date): Promise<any[]> {

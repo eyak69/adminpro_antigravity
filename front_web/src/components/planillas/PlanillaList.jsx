@@ -242,11 +242,18 @@ const PlanillaList = () => {
                 const clientObj = actualRow.cliente;
                 if (!clientObj) return '-';
 
-                // Request: "nombre (alias)" if nombre exists, else just "alias"
-                if (clientObj.nombre_real) {
-                    return `${clientObj.nombre_real} (${clientObj.alias})`;
+                const { nombre_real, alias } = clientObj;
+
+                if (nombre_real && alias) {
+                    return `${nombre_real} (${alias})`;
                 }
-                return clientObj.alias || '-';
+                if (alias && !nombre_real) {
+                    return alias;
+                }
+                if (nombre_real && !alias) {
+                    return nombre_real;
+                }
+                return '-';
             }
         },
         {

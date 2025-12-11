@@ -683,9 +683,12 @@ const PlanillaForm = () => {
                                                 {...field}
                                                 options={clientes}
                                                 getOptionLabel={(option) => {
-                                                    // Handle both object and potentially just ID if initial load hasn't mapped it yet
                                                     if (!option) return '';
-                                                    return `${option.alias} ${option.nombre_real ? `(${option.nombre_real})` : ''}`;
+                                                    const { nombre_real, alias } = option;
+                                                    if (nombre_real && alias) return `${nombre_real} (${alias})`;
+                                                    if (alias && !nombre_real) return alias;
+                                                    if (nombre_real && !alias) return nombre_real;
+                                                    return '';
                                                 }}
                                                 isOptionEqualToValue={(option, value) => option.id === value.id}
                                                 value={clientes.find(c => c.id === field.value) || null}
@@ -716,8 +719,8 @@ const PlanillaForm = () => {
                             </Grid>
                         )}
 
-                        {/* OBSERVACIONES (CONDICIONAL - Show/Hide based on lleva_observacion) */}
-                        {(selectedTipoMov?.lleva_observacion || isEditMode) && (
+                        {/* OBSERVACIONES (CONDICIONAL - Show/Hide based on lleva_observacion OR if it has content from AI, but respect FLAG if type selected) */}
+                        {((!selectedTipoMov && !!watch('observaciones')) || selectedTipoMov?.lleva_observacion || isEditMode) && (
                             <Grid size={12}>
                                 <Controller
                                     name="observaciones"

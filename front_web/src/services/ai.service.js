@@ -1,8 +1,8 @@
 import axios from 'axios';
 import config from '../config';
 
-const parse = async (text) => {
-    const response = await axios.post(`${config.API_BASE_URL}/ai/parse`, { text });
+const parse = async (text, referenceDate) => {
+    const response = await axios.post(`${config.API_BASE_URL}/ai/parse`, { text, referenceDate });
     return response.data;
 };
 

@@ -14,7 +14,7 @@ export class AiService {
         });
     }
 
-    async parseTransaction(text: string) {
+    async parseTransaction(text: string, referenceDate?: string) {
         // 1. Fetch Context (Optimized: No Clients)
         const monedas = await AppDataSource.getRepository(Moneda).find({ select: ["id", "codigo", "nombre"] });
         // Removed Clients list to save tokens. We will resolve client locally.
@@ -42,9 +42,10 @@ export class AiService {
         // 2. Construct Prompt (Optimized)
         const prompt = `
         You are an **EXPERT AI assistant in Currency Exchange**.
-        Parse natural language commands into structured data.
+        Parse natural language commands OR copy-pasted grid rows into structured data.
 
         User Input: "${text}"
+        Context Date (Today): ${referenceDate || "Unknown"}
 
         *** CONTEXT ***
         - Ops: ${JSON.stringify(operaciones.map((o: any) => ({ id: o.id, n: o.nombre })))}
@@ -62,8 +63,18 @@ export class AiService {
         1. **MATCH ACTION/TYPE**: Return 'tipoMovimientoId'.
         2. **MATCH CURRENCY**: Return 'monedaId'.
         3. **EXTRACT VALUES**: 'monto' and 'cotizacion'.
+           - **CRITICAL**: The input may use Spanish Number Format. "1.000,00" equals 1000.
+           - **LOGIC CHECK**: If you find TWO numbers and one is significantly larger (e.g. > 100x the other), the larger one is the **TOTAL**, NOT the Rate.
+             - **CALCULATE RATE**: Cotizacion = Total / Monto.
+             - Example: "3.000" and "4.350.000". 4.35M is Total. Rate = 4350000/3000 = 1450. Return cotizacion=1450.
+             - **Warning**: Do NOT return a cotizacion > 10000 unless specified.
         4. **IDENTIFY CLIENT**: Extract the client name mentioned as text string into 'client_guess'. Do not try to find ID.
-        5. **OBSERVATIONS**: Extra details.
+           - If the input is a row like "... (Ninguno) ...", ignore "(Ninguno)".
+        5. **DATE**: If user mentions a date (e.g. "ayer", "mañana", "lunes passed", "12/05"), calculate 'fecha' (YYYY-MM-DD) relative to Context Date. If no date mentioned, use Context Date.
+           - If input starts with a date like "10/12/2025 ...", use that date.
+        6. **LANGUAGE**: 'observaciones' MUST ALWAYS BE IN SPANISH.
+           - **CRITICAL**: If the input is a copy-pasted row, the Observation is often at the END of the string.
+           - Example: "... 754.000,000000 TRANSA GUTIERREZ" -> Observation is "TRANSA GUTIERREZ".
 
         *** OUTPUT JSON ***
         {
@@ -72,7 +83,8 @@ export class AiService {
             "client_guess": string | null,
             "monto": number | null,
             "cotizacion": number | null,
-            "observaciones": string
+            "observaciones": string,
+            "fecha": string | null
         }
         `;
 
@@ -84,7 +96,7 @@ export class AiService {
             console.log("-----------------------");
 
             const completion = await this.openai.chat.completions.create({
-                messages: [{ role: "system", content: "Returns JSON only." }, { role: "user", content: prompt }],
+                messages: [{ role: "system", content: "Returns JSON only. Always ensure text content is in Spanish." }, { role: "user", content: prompt }],
                 model: "gpt-4o-mini",
                 temperature: 0.1,
             });

@@ -38,8 +38,8 @@ const startServer = async () => {
         // 5. Error Middleware (Should be last)
         app.use(errorHandler);
 
-        app.listen(PORT, () => {
-            console.log(`Server is running on port ${PORT}`);
+        app.listen(Number(PORT), '0.0.0.0', () => {
+            console.log(`Server is running on port ${PORT} (Accessible via LAN)`);
         });
     } catch (error) {
         console.error("Error during Data Source initialization", error);

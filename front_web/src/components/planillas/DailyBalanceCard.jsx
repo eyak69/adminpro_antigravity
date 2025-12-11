@@ -58,7 +58,7 @@ const DailyBalanceCard = ({ selectedDate, refreshTrigger }) => {
                                     fontWeight: 'bold',
                                     color: Number(item.saldo) < 0 ? 'error.main' : 'success.main'
                                 }}>
-                                    $ {Number(item.saldo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    $ {Number(item.saldo).toLocaleString('es-AR', { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                                 </Typography>
                             </Box>
                         </Grid>

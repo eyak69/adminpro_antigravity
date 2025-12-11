@@ -15,7 +15,8 @@ const MagicInput = () => {
         if (!text.trim()) return;
         setLoading(true);
         try {
-            const result = await aiService.parse(text);
+            const today = new Date().toISOString().split('T')[0];
+            const result = await aiService.parse(text, today);
             navigate('/planillas/nuevo', { state: { smartData: result } });
         } catch (error) {
             console.error("AI Parse Error:", error);

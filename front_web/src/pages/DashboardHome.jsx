@@ -13,37 +13,13 @@ const DashboardHome = () => {
 
     useEffect(() => {
         const fetchRates = async () => {
-            // MOCK DATA FOR DEMO
-            const mockRates = [];
-            const today = new Date();
-            let baseCompra = 1120;
-            let baseVenta = 1150;
-
-            for (let i = 30; i >= 0; i--) {
-                const day = new Date(today);
-                day.setDate(today.getDate() - i);
-
-                // Random flux
-                baseCompra += (Math.random() - 0.5) * 10;
-                baseVenta += (Math.random() - 0.5) * 10;
-
-                mockRates.push({
-                    fecha: day.toISOString().split('T')[0],
-                    compra: Number(baseCompra.toFixed(2)),
-                    venta: Number(baseVenta.toFixed(2))
-                });
-            }
-            setRates(mockRates);
-
-            /* API DISABLED FOR DEMO
             try {
-                // Fetch USD rates (monedaId=2) for last 30 days
-                const res = await axios.get(`${config.API_BASE_URL}/planillas/rates?days=30&monedaId=2`);
+                // Fetch USD rates (monedaId=1) for last 30 days
+                const res = await axios.get(`${config.API_BASE_URL}/planillas/rates?days=30&monedaId=1`);
                 setRates(res.data);
             } catch (error) {
                 console.error("Error loading rates", error);
             }
-            */
         };
 
         const fetchMarketData = async () => {
